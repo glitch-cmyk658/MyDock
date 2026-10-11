@@ -2,13 +2,9 @@
 
 **Windows 上的 macOS 体验** —— 一条 Dock、一个全屏启动台、一根顶部状态栏。纯 Win32 + GDI+ 实现，无任何第三方运行时依赖，编译出来就是一个 `.exe`。
 
-<p align="center">
-  <img src="dock_v11.gif" width="720" alt="MyDock 演示">
-</p>
-
 | 浅色 | 深色 |
 |---|---|
-| ![浅色主题](theme_light.png) | ![深色主题](theme_dark.png) |
+| ![浅色主题](theme_light_icons.png) | ![深色主题](theme_dark_icons.png) |
 
 ## 特性
 
