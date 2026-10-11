@@ -1,0 +1,11 @@
+# 构建产物
+*.exe
+*.o
+*.obj
+build/
+.vs/
+
+# 系统与编辑器
+Thumbs.db
+Desktop.ini
+*.mp4
