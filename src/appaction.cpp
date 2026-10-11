@@ -136,7 +136,7 @@ void AppendAppActions(std::vector<MenuItem>& out, const AppItem& app,
     }
 }
 
-AppOutcome RunAppAction(int cmd, const AppItem& app, const AppPlaces& places) {
+AppOutcome RunAppAction(int cmd, const AppItem& app) {
     AppOutcome r;
     if (!IsAppCmd(cmd)) return r;
     r.handled = true;

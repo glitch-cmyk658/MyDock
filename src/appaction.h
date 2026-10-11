@@ -72,7 +72,7 @@ void AppendAppActions(std::vector<MenuItem>& out, const AppItem& app,
                       const AppPlaces& places);
 
 // 执行一条应用操作。跟界面无关的部分全在这里：开文件夹、写清单、启动应用。
-AppOutcome RunAppAction(int cmd, const AppItem& app, const AppPlaces& places);
+AppOutcome RunAppAction(int cmd, const AppItem& app);
 
 // 「打开所在文件夹并选中它」——单独拎出来，别处也能用
 void RevealInExplorer(const std::wstring& path);

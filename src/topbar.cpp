@@ -712,9 +712,10 @@ void TopBar::DrawIconRow(Gdiplus::Graphics& g, float textLeft) {
     iconCy_    = static_cast<float>(h_) * 0.5f;
     iconHit_   = static_cast<float>(Td(30));           // 悬停高亮 / 命中方框
     iconCount_ = kIconCount;
-    if (iconCount_ > static_cast<int>(sizeof(iconCX_) / sizeof(iconCX_[0]))) {
-        iconCount_ = static_cast<int>(sizeof(iconCX_) / sizeof(iconCX_[0]));
-    }
+    // 图标数组容量在编译期钉死 —— 以前留了个永远不触发的运行时钳位，
+    // 真加超了也是静默截断，不如编译期直接报错
+    static_assert(kIconCount <= static_cast<int>(sizeof(iconCX_) / sizeof(iconCX_[0])),
+                  "iconCX_ 容量不够：加状态图标时把数组一并扩了");
 
     // ---- 这一格右边要不要跟一段文字 ----
     // 现在只有电池用：充电（或接着电源）时电池里面是整块灌满的，

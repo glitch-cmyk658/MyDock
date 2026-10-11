@@ -1,0 +1,336 @@
+﻿cppcheck : src\appaction.cpp:17:5: style: Consider using std::any_of algorithm instead of a raw loop. [useStlAlgorithm]
+At line:15 char:2726
++ ... 15\mydock"; cppcheck --enable=warning,style,performance,portability - ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (src\appaction.c...seStlAlgorithm]:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    for (const std::wstring& p : list) {
+    ^
+src\apps.cpp:218:47: performance: Ineffective call of function 'substr' because a prefix of the string is assigned to i
+tself. Use resize() or pop_back() instead. [uselessCallsSubstr]
+        if (dot != std::wstring::npos) stem = stem.substr(0, dot);
+                                              ^
+src\apps.cpp:255:47: performance: Ineffective call of function 'substr' because a prefix of the string is assigned to i
+tself. Use resize() or pop_back() instead. [uselessCallsSubstr]
+        if (dot != std::wstring::npos) stem = stem.substr(0, dot);
+                                              ^
+src\apps.cpp:511:43: performance: Ineffective call of function 'substr' because a prefix of the string is assigned to i
+tself. Use resize() or pop_back() instead. [uselessCallsSubstr]
+    if (dot != std::wstring::npos) stem = stem.substr(0, dot);
+                                          ^
+src\apps.cpp:59:27: style: Consider using std::transform algorithm instead of a raw loop. [useStlAlgorithm]
+    for (auto& c : low) c = static_cast<wchar_t>(towlower(c));
+                          ^
+src\apps.cpp:93:39: style: Consider using std::transform algorithm instead of a raw loop. [useStlAlgorithm]
+        if (c >= L'A' && c <= L'Z') c = static_cast<wchar_t>(c - L'A' + L'a');
+                                      ^
+src\apps.cpp:447:5: style: Consider using std::any_of algorithm instead of a raw loop. [useStlAlgorithm]
+    for (const std::wstring& p : pinned) {
+    ^
+src\apps.cpp:476:5: style: Consider using std::any_of algorithm instead of a raw loop. [useStlAlgorithm]
+    for (const std::wstring& p : hidden) {
+    ^
+src\apps.cpp:499:5: style: Consider using std::all_of or std::none_of algorithm instead of a raw loop. [useStlAlgorithm
+]
+    for (const std::wstring& p : list) {
+    ^
+src\apps.cpp:690:0: style: Consider using std::find_if algorithm instead of a raw loop. [useStlAlgorithm]
+        if (d.kind == k) return d.line;
+^
+src\apps.cpp:698:0: style: Consider using std::find_if algorithm instead of a raw loop. [useStlAlgorithm]
+        if (_wcsicmp(line.c_str(), d.line) == 0) return d.kind;
+^
+src\ccenter.cpp:57:12: warning: Class 'ControlCenter' does not have a copy constructor which is recommended since it ha
+s dynamic memory/resource management. [noCopyConstructor]
+    delete backdrop_;
+           ^
+src\ccenter.cpp:57:12: warning: Class 'ControlCenter' does not have a operator= which is recommended since it has dynam
+ic memory/resource management. [noOperatorEq]
+    delete backdrop_;
+           ^
+src\ccenter.cpp:131:12: style: Condition 'looping_' is always true [knownConditionTrueFalse]
+    while (looping_) {
+           ^
+src\ccenter.cpp:129:16: note: Assignment 'looping_=true', assigned value is 1
+    looping_ = true;
+               ^
+src\ccenter.cpp:132:46: note: Assuming condition is false
+        if (GetMessageW(&msg, nullptr, 0, 0) <= 0) {
+                                             ^
+src\ccenter.cpp:131:12: note: Condition 'looping_' is always true
+    while (looping_) {
+           ^
+src\ccenter.cpp:297:33: style: Same expression in both branches of ternary operator. [duplicateExpressionTernary]
+                                : Gdiplus::Color(255, 255, 255, 255));
+                                ^
+src\dock.cpp:1493:12: style: The member function 'mydock::Dock::StopRunningScan' can be static. [functionStatic]
+void Dock::StopRunningScan() {
+           ^
+src\dock.h:46:10: note: The member function 'mydock::Dock::StopRunningScan' can be static.
+    void StopRunningScan();
+         ^
+src\dock.cpp:1493:12: note: The member function 'mydock::Dock::StopRunningScan' can be static.
+void Dock::StopRunningScan() {
+           ^
+src\dock.cpp:1674:28: style: The member function 'mydock::Dock::PickFromPinned' can be static. [functionStatic]
+std::vector<AppItem> Dock::PickFromPinned(std::vector<AppItem>& all) {
+                           ^
+src\dock.h:103:26: note: The member function 'mydock::Dock::PickFromPinned' can be static.
+    std::vector<AppItem> PickFromPinned(std::vector<AppItem>& all);
+                         ^
+src\dock.cpp:1674:28: note: The member function 'mydock::Dock::PickFromPinned' can be static.
+std::vector<AppItem> Dock::PickFromPinned(std::vector<AppItem>& all) {
+                           ^
+src\dock.cpp:531:12: warning: Class 'Dock' does not have a copy constructor which is recommended since it has dynamic m
+emory/resource management. [noCopyConstructor]
+    delete glass_;
+           ^
+src\dock.cpp:531:12: warning: Class 'Dock' does not have a operator= which is recommended since it has dynamic memory/r
+esource management. [noOperatorEq]
+    delete glass_;
+           ^
+src\dock.cpp:281:43: performance: Ineffective call of function 'substr' because a prefix of the string is assigned to i
+tself. Use resize() or pop_back() instead. [uselessCallsSubstr]
+    if (dot != std::wstring::npos) leaf = leaf.substr(0, dot);
+                                          ^
+src\dock.cpp:1639:40: performance: Ineffective call of function 'substr' because a prefix of the string is assigned to 
+itself. Use resize() or pop_back() instead. [uselessCallsSubstr]
+    if (dot != std::wstring::npos) s = s.substr(0, dot);
+                                       ^
+src\dock.cpp:228:5: style: Consider using std::all_of or std::none_of algorithm instead of a raw loop. [useStlAlgorithm
+]
+    for (const wchar_t* w : kNot) {
+    ^
+src\dock.cpp:627:15: style: Consider using std::transform algorithm instead of a raw loop. [useStlAlgorithm]
+        fixed.push_back(a.kind == AppKind::File ? a.lnkPath : SpecialLine(a.kind));
+              ^
+src\dock.cpp:766:86: style: Consider using std::find_if algorithm instead of a raw loop. [useStlAlgorithm]
+            if (mouseX_ >= x_[i] && mouseX_ < x_[i] + static_cast<float>(baseSize_)) {
+                                                                                     ^
+src\dock.cpp:1578:68: style: Consider using std::any_of algorithm instead of a raw loop. [useStlAlgorithm]
+            if (!a.target.empty() && NormalizePath(a.target) == p) { onDock = true; break; }
+                                                                   ^
+src\dock.cpp:1599:30: style: Consider using std::find_if algorithm instead of a raw loop. [useStlAlgorithm]
+            if (e.path == p) { e.lastSeen = now; have = true; break; }
+                             ^
+src\dock.cpp:1626:14: style: Consider using std::transform algorithm instead of a raw loop. [useStlAlgorithm]
+        list.push_back(MakeAppItemFromExe(e.path));
+             ^
+src\dock.cpp:1697:55: style: Consider using std::find_if algorithm instead of a raw loop. [useStlAlgorithm]
+            if (NormalizePath(all[i].lnkPath) == key) {
+                                                      ^
+src\flyout.cpp:40:12: warning: Class 'CalendarFlyout' does not have a copy constructor which is recommended since it ha
+s dynamic memory/resource management. [noCopyConstructor]
+    delete backdrop_;
+           ^
+src\flyout.cpp:40:12: warning: Class 'CalendarFlyout' does not have a operator= which is recommended since it has dynam
+ic memory/resource management. [noOperatorEq]
+    delete backdrop_;
+           ^
+src\flyout.cpp:93:12: style: Condition 'looping_' is always true [knownConditionTrueFalse]
+    while (looping_) {
+           ^
+src\flyout.cpp:91:16: note: Assignment 'looping_=true', assigned value is 1
+    looping_ = true;
+               ^
+src\flyout.cpp:94:46: note: Assuming condition is false
+        if (GetMessageW(&msg, nullptr, 0, 0) <= 0) {
+                                             ^
+src\flyout.cpp:93:12: note: Condition 'looping_' is always true
+    while (looping_) {
+           ^
+src\launcher.cpp:124:16: style: The member function 'mydock::Launcher::AddButtonRect' can be static. [functionStatic]
+void Launcher::AddButtonRect(int& x, int& y, int& w, int& h) const {
+               ^
+src\launcher.h:75:10: note: The member function 'mydock::Launcher::AddButtonRect' can be static.
+    void AddButtonRect(int& x, int& y, int& w, int& h) const;
+         ^
+src\launcher.cpp:124:16: note: The member function 'mydock::Launcher::AddButtonRect' can be static.
+void Launcher::AddButtonRect(int& x, int& y, int& w, int& h) const {
+               ^
+src\launcher.cpp:48:12: warning: Class 'Launcher' does not have a copy constructor which is recommended since it has dy
+namic memory/resource management. [noCopyConstructor]
+    delete menuShadow_;
+           ^
+src\launcher.cpp:48:12: warning: Class 'Launcher' does not have a operator= which is recommended since it has dynamic m
+emory/resource management. [noOperatorEq]
+    delete menuShadow_;
+           ^
+src\launcher.cpp:22:25: style: Consider using std::transform algorithm instead of a raw loop. [useStlAlgorithm]
+    for (auto& c : r) c = static_cast<wchar_t>(towlower(c));
+                        ^
+src\launcher.cpp:407:77: style: Consider using std::copy_if algorithm instead of a raw loop. [useStlAlgorithm]
+            if (ToLower(apps_[i].name).find(q) != std::wstring::npos) shown_.push_back(i);
+                                                                            ^
+src\menu.cpp:267:12: warning: Class 'PopupMenu' does not have a copy constructor which is recommended since it has dyna
+mic memory/resource management. [noCopyConstructor]
+    delete backdrop_;
+           ^
+src\menu.cpp:267:12: warning: Class 'PopupMenu' does not have a operator= which is recommended since it has dynamic mem
+ory/resource management. [noOperatorEq]
+    delete backdrop_;
+           ^
+src\menu.cpp:445:12: style: Condition 'looping_' is always true [knownConditionTrueFalse]
+    while (looping_) {
+           ^
+src\menu.cpp:443:16: note: Assignment 'looping_=true', assigned value is 1
+    looping_ = true;
+               ^
+src\menu.cpp:446:46: note: Assuming condition is false
+        if (GetMessageW(&msg, nullptr, 0, 0) <= 0) {
+                                             ^
+src\menu.cpp:445:12: note: Condition 'looping_' is always true
+    while (looping_) {
+           ^
+src\menu.cpp:246:44: style: Consider using std::accumulate algorithm instead of a raw loop. [useStlAlgorithm]
+    for (const MenuItem& it : items) total += it.separator ? m.sepH : rowH;
+                                           ^
+src\recents.cpp:32:39: style: Consider using std::transform algorithm instead of a raw loop. [useStlAlgorithm]
+        if (c >= L'A' && c <= L'Z') c = static_cast<wchar_t>(c - L'A' + L'a');
+                                      ^
+src\svgicon.cpp:363:12: style: Redundant initialization for 'cx'. The initialized value is overwritten before it is rea
+d. [redundantInitialization]
+        cx = x;
+           ^
+src\svgicon.cpp:359:14: note: cx is initialized
+    float cx = x, cy = y;
+             ^
+src\svgicon.cpp:363:12: note: cx is overwritten
+        cx = x;
+           ^
+src\svgicon.cpp:364:12: style: Redundant initialization for 'cy'. The initialized value is overwritten before it is rea
+d. [redundantInitialization]
+        cy = y;
+           ^
+src\svgicon.cpp:359:22: note: cy is initialized
+    float cx = x, cy = y;
+                     ^
+src\svgicon.cpp:364:12: note: cy is overwritten
+        cy = y;
+           ^
+src\svgicon.cpp:363:9: style: Variable 'cx' is assigned an expression that holds the same value. [redundantAssignment]
+        cx = x;
+        ^
+src\svgicon.cpp:359:14: note: cx is assigned 'x' here.
+    float cx = x, cy = y;
+             ^
+src\svgicon.cpp:363:9: note: Variable 'cx' is assigned an expression that holds the same value.
+        cx = x;
+        ^
+src\svgicon.cpp:364:9: style: Variable 'cy' is assigned an expression that holds the same value. [redundantAssignment]
+        cy = y;
+        ^
+src\svgicon.cpp:359:22: note: cy is assigned 'y' here.
+    float cx = x, cy = y;
+                     ^
+src\svgicon.cpp:364:9: note: Variable 'cy' is assigned an expression that holds the same value.
+        cy = y;
+        ^
+src\svgicon.cpp:373:44: style: Variable 'cx' is reassigned a value before the old one has been used. [redundantAssignme
+nt]
+        PushLine(s, x + w - r, y);      cx = x + w - r; cy = y;
+                                           ^
+src\svgicon.cpp:371:12: note: cx is assigned
+        cx = x + r;
+           ^
+src\svgicon.cpp:373:44: note: cx is overwritten
+        PushLine(s, x + w - r, y);      cx = x + w - r; cy = y;
+                                           ^
+src\svgicon.cpp:372:9: style: Variable 'cy' is assigned an expression that holds the same value. [redundantAssignment]
+        cy = y;
+        ^
+src\svgicon.cpp:359:22: note: cy is assigned 'y' here.
+    float cx = x, cy = y;
+                     ^
+src\svgicon.cpp:372:9: note: Variable 'cy' is assigned an expression that holds the same value.
+        cy = y;
+        ^
+src\svgicon.cpp:373:60: style: Variable 'cy' is reassigned a value before the old one has been used. [redundantAssignme
+nt]
+        PushLine(s, x + w - r, y);      cx = x + w - r; cy = y;
+                                                           ^
+src\svgicon.cpp:372:12: note: cy is assigned
+        cy = y;
+           ^
+src\svgicon.cpp:373:60: note: cy is overwritten
+        PushLine(s, x + w - r, y);      cx = x + w - r; cy = y;
+                                                           ^
+src\svgicon.cpp:363:12: style: Variable 'cx' is assigned a value that is never used. [unreadVariable]
+        cx = x;
+           ^
+src\svgicon.cpp:364:12: style: Variable 'cy' is assigned a value that is never used. [unreadVariable]
+        cy = y;
+           ^
+src\topbar.cpp:1643:14: style: The member function 'mydock::TopBar::RunCommand' can be static. [functionStatic]
+void TopBar::RunCommand(int cmd) {
+             ^
+src\topbar.h:59:10: note: The member function 'mydock::TopBar::RunCommand' can be static.
+    void RunCommand(int cmd);
+         ^
+src\topbar.cpp:1643:14: note: The member function 'mydock::TopBar::RunCommand' can be static.
+void TopBar::RunCommand(int cmd) {
+             ^
+src\topbar.cpp:817:14: style: The member function 'mydock::TopBar::SendWinKey' can be static. [functionStatic]
+void TopBar::SendWinKey(WORD vk) {
+             ^
+src\topbar.h:60:10: note: The member function 'mydock::TopBar::SendWinKey' can be static.
+    void SendWinKey(WORD vk);       // 给系统发一次 Win+X 热键
+         ^
+src\topbar.cpp:817:14: note: The member function 'mydock::TopBar::SendWinKey' can be static.
+void TopBar::SendWinKey(WORD vk) {
+             ^
+src\topbar.cpp:1297:14: style: The member function 'mydock::TopBar::ForegroundFullscreen' can be static. [functionStati
+c]
+bool TopBar::ForegroundFullscreen() const {
+             ^
+src\topbar.h:61:10: note: The member function 'mydock::TopBar::ForegroundFullscreen' can be static.
+    bool ForegroundFullscreen() const;
+         ^
+src\topbar.cpp:1297:14: note: The member function 'mydock::TopBar::ForegroundFullscreen' can be static.
+bool TopBar::ForegroundFullscreen() const {
+             ^
+src\topbar.cpp:435:12: warning: Class 'TopBar' does not have a copy constructor which is recommended since it has dynam
+ic memory/resource management. [noCopyConstructor]
+    delete backdrop_;
+           ^
+src\topbar.cpp:435:12: warning: Class 'TopBar' does not have a operator= which is recommended since it has dynamic memo
+ry/resource management. [noOperatorEq]
+    delete backdrop_;
+           ^
+src\topbar.cpp:715:20: style: Condition 'iconCount_>static_cast<int>(sizeof(iconCX_)/sizeof(iconCX_[0]))' is always fal
+se [knownConditionTrueFalse]
+    if (iconCount_ > static_cast<int>(sizeof(iconCX_) / sizeof(iconCX_[0]))) {
+                   ^
+src\topbar.cpp:714:18: note: Assignment 'iconCount_=kIconCount', assigned value is 8
+    iconCount_ = kIconCount;
+                 ^
+src\topbar.cpp:715:20: note: Condition 'iconCount_>static_cast<int>(sizeof(iconCX_)/sizeof(iconCX_[0]))' is always fals
+e
+    if (iconCount_ > static_cast<int>(sizeof(iconCX_) / sizeof(iconCX_[0]))) {
+                   ^
+src\topbar.cpp:93:31: style: Consider using std::transform algorithm instead of a raw loop. [useStlAlgorithm]
+        for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
+                              ^
+src\util.cpp:333:15: style: The if condition is the same as the previous if condition [duplicateCondition]
+        if (ii.hbmColor) DeleteObject(ii.hbmColor);
+              ^
+src\util.cpp:329:15: note: First condition
+        if (ii.hbmColor) {
+              ^
+src\util.cpp:333:15: note: Second condition
+        if (ii.hbmColor) DeleteObject(ii.hbmColor);
+              ^
+src\util.cpp:231:47: performance: Ineffective call of function 'substr' because a prefix of the string is assigned to i
+tself. Use resize() or pop_back() instead. [uselessCallsSubstr]
+    if (pos != std::wstring::npos) g_exeDir = g_exeDir.substr(0, pos);
+                                              ^
+src\util.cpp:29:42: style: Consider using std::transform algorithm instead of a raw loop. [useStlAlgorithm]
+        if (ch >= L'A' && ch <= L'Z') ch = static_cast<wchar_t>(ch - L'A' + L'a');
+                                         ^
+src\util.cpp:75:40: style: Consider using std::replace_if algorithm instead of a raw loop. [useStlAlgorithm]
+    for (auto& c : s) if (c == L'/') c = L'\\';
+                                       ^
+src\util.cpp:707:46: style: Consider using std::transform algorithm instead of a raw loop. [useStlAlgorithm]
+            if (ch >= L'A' && ch <= L'Z') ch = static_cast<wchar_t>(ch - L'A' + L'a');
+                                             ^

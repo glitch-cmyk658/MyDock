@@ -28,7 +28,13 @@ namespace mydock {
 // ★ 为什么左边是个**圆环**而不是苹果 logo：
 //   这是给 Windows 写的 Dock，摆个被咬一口的苹果既不对题也不体面。
 class TopBar {
+    // 持有裸指针资源（Bitmap/HDC/HBITMAP），默认拷贝语义 = 双重释放隐患。
+    // cppcheck 六个类各报一条之后统一禁掉拷贝（2026-10-12）
+        TopBar(const TopBar&) = delete;
+    TopBar& operator=(const TopBar&) = delete;
+
 public:
+    TopBar() = default;
     ~TopBar();
 
     // 建窗口。settings.ini 里 [topbar] enabled=0 的时候直接不建（返回 false）。

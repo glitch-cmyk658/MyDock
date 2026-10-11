@@ -58,8 +58,6 @@ int DockDpi(int px) {
 // 枚举顶层窗口时用的上下文：要么收集路径集合，要么找某个 exe 的窗口
 struct EnumCtx {
     std::set<std::wstring>* paths;
-    std::wstring* target;
-    HWND found;
 };
 
 BOOL CALLBACK EnumProc(HWND h, LPARAM lp) {
@@ -83,16 +81,11 @@ BOOL CALLBACK EnumProc(HWND h, LPARAM lp) {
 
     wchar_t buf[MAX_PATH] = {};
     DWORD sz = MAX_PATH;
-    bool stop = false;
     if (QueryFullProcessImageNameW(p, 0, buf, &sz)) {
-        if (c->paths) c->paths->insert(NormalizePath(buf));
-        if (c->target && !c->found && _wcsicmp(buf, c->target->c_str()) == 0) {
-            c->found = h;
-            stop = true;
-        }
+        c->paths->insert(NormalizePath(buf));
     }
     CloseHandle(p);
-    return stop ? FALSE : TRUE;
+    return TRUE;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,7 +122,7 @@ DWORD WINAPI RunScanProc(void*) {
     for (;;) {
         const double t0 = NowUs();
         std::set<std::wstring> fresh;
-        EnumCtx ctx = {&fresh, nullptr, nullptr};
+        EnumCtx ctx = {&fresh};
         EnumWindows(EnumProc, reinterpret_cast<LPARAM>(&ctx));
         {
             std::lock_guard<std::mutex> lk(g_runScan.mtx);
@@ -1431,7 +1424,7 @@ void Dock::RefreshRunning(bool force) {
     }
     // 后台线程没起来（创建失败）时退回老办法 —— 慢，但总比运行区空着强
     if (!g_runScan.thread) {
-        EnumCtx ctx = {&paths, nullptr, nullptr};
+        EnumCtx ctx = {&paths};
         EnumWindows(EnumProc, reinterpret_cast<LPARAM>(&ctx));
     }
 
@@ -1838,9 +1831,7 @@ void Dock::LaunchOrActivate(int index) {
 
     // 「已经在跑就切过去」那条判据在 appaction.cpp 里 —— 启动台点格子走的
     // 是同一个函数，两边不会哪天走着走着就不一样了。
-    AppPlaces places;
-    places.onDock = true;
-    RunAppAction(kAppOpen, app, places);
+    RunAppAction(kAppOpen, app);
 }
 
 // 2026-10-11 - AI - 左键点图标：有「别的地方可去」的应用先弹菜单，其余照常直接启动
@@ -2041,11 +2032,7 @@ void Dock::ShowMenu(int x, int y) {
                 LaunchOrActivate(idx);
                 return;
             }
-            AppPlaces places;
-            places.onDock = menuOnDock;   // 用「菜单弹出那一刻」的归属，不是重新定位后的
-            places.onLaunchpad = false;
-            places.userAdded = AppIsUserAdded(app);
-            const AppOutcome r = RunAppAction(cmd, app, places);
+            const AppOutcome r = RunAppAction(cmd, app);
             // 移除之后立刻重排 —— 让用户当场看见它没了好过下次重启才发现
             if (r.pinnedChanged) ReloadApps();
         }

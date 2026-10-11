@@ -53,7 +53,13 @@ int MenuHitItem(const std::vector<MenuItem>& items, int x, int y, int w, int row
 //   而且它是独立的一个普通窗口，盖在毛玻璃上像贴了一张不透光的纸片。
 //   自己开一个分层窗口画，才能跟 Dock 用同一套圆角、同一套材质。
 class PopupMenu {
+    // 持有裸指针资源（Bitmap/HDC/HBITMAP），默认拷贝语义 = 双重释放隐患。
+    // cppcheck 六个类各报一条之后统一禁掉拷贝（2026-10-12）
+        PopupMenu(const PopupMenu&) = delete;
+    PopupMenu& operator=(const PopupMenu&) = delete;
+
 public:
+    PopupMenu() = default;
     ~PopupMenu();
 
     // 弹出并阻塞到这里，用户点了一项或取消才返回。

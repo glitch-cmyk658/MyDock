@@ -1025,12 +1025,7 @@ void Launcher::RunMenuCmd(int cmd, int slot) {
         //   拿着引用往下走就是在读一块已经释放的字符串。
         const AppItem app = apps_[static_cast<size_t>(idx)];
 
-        AppPlaces places;
-        places.onDock = AppIsPinned(app);
-        places.onLaunchpad = true;
-        places.userAdded = AppIsUserAdded(app);
-
-        const AppOutcome r = RunAppAction(cmd, app, places);
+        const AppOutcome r = RunAppAction(cmd, app);
         if (r.launched) { Close(); return; }
         // 清单变了就喊 Dock 一声，让它重建自己那一行图标
         if (r.pinnedChanged && dock_) PostMessageW(dock_, kMsgPinnedChanged, 0, 0);

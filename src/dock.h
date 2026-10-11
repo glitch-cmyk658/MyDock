@@ -15,7 +15,13 @@
 namespace mydock {
 
 class Dock {
+    // 持有裸指针资源（Bitmap/HDC/HBITMAP），默认拷贝语义 = 双重释放隐患。
+    // cppcheck 六个类各报一条之后统一禁掉拷贝（2026-10-12）
+        Dock(const Dock&) = delete;
+    Dock& operator=(const Dock&) = delete;
+
 public:
+    Dock() = default;
     ~Dock();
     bool Create(HINSTANCE inst);
     HWND Handle() const { return hwnd_; }

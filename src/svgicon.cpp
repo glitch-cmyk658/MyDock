@@ -355,8 +355,8 @@ void SvgAddRect(SvgIcon& out, float x, float y, float w, float h, float rx) {
 
     SvgSub s;
     s.closed = true;
-    // 当前点（ArcToCubic 会边画边更新它）
-    float cx = x, cy = y;
+    // 当前点（ArcToCubic 会边画边更新它）；两个分支一进来都会先赋值
+    float cx, cy;
 
     if (r <= 0.0f) {
         PushMove(s, x, y);

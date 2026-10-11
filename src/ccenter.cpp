@@ -293,8 +293,9 @@ void ControlCenter::DrawSlider(Gdiplus::Graphics& g, int idx, const char* lucide
     // 滑块：白球带描边
     const int d = Dpi(14);
     const int kx = tx + fw - d / 2;
-    Gdiplus::SolidBrush ball(dk ? Gdiplus::Color(255, 255, 255, 255)
-                                : Gdiplus::Color(255, 255, 255, 255));
+    // 白球两种主题通用（深浅由上面的 ring 描边区分）——
+    // 此前写成三元两分支同值，读起来像漏了一个主题
+    Gdiplus::SolidBrush ball(Gdiplus::Color(255, 255, 255, 255));
     Gdiplus::Pen ring(dk ? Gdiplus::Color(80, 0, 0, 0) : Gdiplus::Color(40, 0, 0, 0), 1.0f);
     g.FillEllipse(&ball, static_cast<float>(kx), static_cast<float>(cy - d / 2),
                   static_cast<float>(d), static_cast<float>(d));

@@ -23,7 +23,13 @@
 namespace mydock {
 
 class ControlCenter {
+    // 持有裸指针资源（Bitmap/HDC/HBITMAP），默认拷贝语义 = 双重释放隐患。
+    // cppcheck 六个类各报一条之后统一禁掉拷贝（2026-10-12）
+        ControlCenter(const ControlCenter&) = delete;
+    ControlCenter& operator=(const ControlCenter&) = delete;
+
 public:
+    ControlCenter() = default;
     ~ControlCenter();
 
     // (ax, ay) = 锚点（屏幕坐标）；dark = 深浅色；sys = 打开瞬间的系统状态。

@@ -44,8 +44,11 @@ bool EnsureVolume() {
 
     if (!g_comTried) {
         g_comTried = true;
-        // 主线程九成已经初始化过 COM 了（COM 的返回值 S_FALSE 表示「早就好了」）。
-        // 万一别人用的是 MTA，这里请求 STA 会被拒 —— 那也无所谓，COM 已经在跑了。
+        // ★ 进程级一次性初始化，故意不配对 CoUninitialize：音量接口要活到
+        //   进程结束，计数随进程由系统回收。S_OK / S_FALSE 都算成功
+        //   （S_FALSE 同样 +1，但我们本来就不打算减，与 dock.cpp 的规矩不冲突 ——
+        //   那条规矩约束的是「可以配对的地方」）；RPC_E_CHANGED_MODE 才算失败，
+        //   此时主线程已用别的并发模式初始化过，CoCreateInstance 照常能用。
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     }
 

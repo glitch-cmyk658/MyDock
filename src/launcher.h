@@ -22,7 +22,13 @@ constexpr UINT kMsgPinnedChanged = WM_APP + 1;
 constexpr UINT kMsgHideNow = WM_APP + 2;
 
 class Launcher {
+    // 持有裸指针资源（Bitmap/HDC/HBITMAP），默认拷贝语义 = 双重释放隐患。
+    // cppcheck 六个类各报一条之后统一禁掉拷贝（2026-10-12）
+        Launcher(const Launcher&) = delete;
+    Launcher& operator=(const Launcher&) = delete;
+
 public:
+    Launcher() = default;
     ~Launcher();
 
     // owner 是 Dock 的窗口句柄，用来：① 关闭时把焦点还回去
