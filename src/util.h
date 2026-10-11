@@ -106,13 +106,32 @@ Gdiplus::Bitmap* MakeNoiseTexture(int size);
 // 只认得看见的窗口。
 HWND FindProcessWindow(const std::wstring& exePath);
 
+// 2026-10-11 - AI - 找进程主窗口（含缩托盘的）。
+// titleHint：应用显示名（如「微信」）。标题包含它的候选按主窗口优先 ——
+// 主窗口的标题就是应用名，托盘/辅助窗口不是。找错窗口的代价实测过：
+// 显出一块黑屏或点不动的死壳。
+HWND FindProcessWindowAny(const std::wstring& exePath,
+                          const std::wstring& titleHint = L"");
+
 // 2026-10-11 - AI - 先找看得见的，找不到再回头接受藏起来的窗口
 //
 // 微信点了关闭之后是缩进托盘，主窗口被 ShowWindow(SW_HIDE) 藏掉，进程还活着。
 // 只看得见的窗口就会得出「它没在运行」，于是再 ShellExecute 一次 —— 微信把这次
 // 当成一个新的登录，结果就是每次从 Dock 打开都要重新扫码。
 // 所以先按老规矩找可见的，找不到再捞隐藏的（并且先 ShowWindow 把它显出来）。
-HWND FindProcessWindowAny(const std::wstring& exePath);
+
+// 2026-10-11 晚 - AI - 把缩托盘/最小化的窗口恢复到前台并**真正激活**。
+// 网上取证（Stack Overflow "SetForegroundWindow unreliable" 高票 + AHK 社区微信帖）
+// 后的三条修正：
+//   ① AttachThreadInput 接的是「当前前台窗口的线程」（Hans Passant），不只目标线程；
+//   ② SetForegroundWindow 之后必须补 SetActiveWindow + SetFocus —— 缺了这两个，
+//      窗口有名分但应用内部还是 inactive：单击被当激活点击吃掉、双击反而有效
+//      （正是用户在微信 4.x 上实测的症状）；
+//   ③ 状态切换走 WM_SYSCOMMAND（应用自己处理 SC_MINIMIZE/SC_RESTORE 并更新
+//      激活状态），比 ShowWindow 更贴近用户手动点最小化按钮的路径。
+// exePath 用于判断是否微信/Weixin：只有它有「打开微信」热键可借
+bool RestoreAndActivate(HWND w, const std::wstring& name,
+                        const std::wstring& exePath = L"");
 
 // 这个 exe 有没有进程在跑（不管它有没有窗口）。
 // 用来兜住最后一种情况：进程还在、但一个窗口都找不到 ——

@@ -1,0 +1,32 @@
+// 2026-10-11 - AI - MyDock 的资源：exe 图标 + 版本信息
+//
+// 没有这份资源，exe 在资源管理器里是「白纸」图标，右键属性里
+// 产品名/版本全是空白 —— 给别人分发时观感和可信度都差一截。
+// 编译：windres mydock.rc -O coff -o mydock_res.o（build.cmd 已接入）
+
+1 ICON "mydock.ico"
+
+1 VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  1,0,0,0
+FILEOS          0x40004L    // VOS_NT_WINDOWS32
+FILETYPE        0x1L        // VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    // 简体中文 (0804) + Unicode (04B0)
+    BLOCK "080404B0"
+    BEGIN
+      VALUE "FileDescription", "MyDock — Windows 上的 macOS 风格 Dock / 启动台 / 顶部状态栏"
+      VALUE "ProductName",     "MyDock"
+      VALUE "FileVersion",     "1.0.0"
+      VALUE "ProductVersion",  "1.0.0"
+      VALUE "OriginalFilename","MyDock.exe"
+      VALUE "LegalCopyright",  "保留所有权利"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0804, 1200
+  END
+END

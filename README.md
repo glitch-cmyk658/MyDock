@@ -40,6 +40,14 @@
 - 应用身份统一路径规范化（8.3 短名 / `\\?\` 前缀 / 大小写 / 反斜杠差异不再造成重复图标）
 - 单实例互斥体、后台线程退出时逐一收尾、COM/GDI+ 生命周期严格配对
 
+## 下载
+
+无需自己编译：到 [Releases](https://github.com/glitch-cmyk658/MyDock/releases/latest)
+下载 `MyDock-v1.0.0.zip`，解压后把 `MyDock.exe` 放到任意目录双击运行。
+
+> 首次运行若弹出 SmartScreen 警告（**Windows 已保护你的电脑**），点
+> **更多信息 → 仍要运行**——程序未购买代码签名证书，属正常现象，仅首次。
+
 ## 构建
 
 需要 [MinGW-w64](https://www.mingw-w64.org/)（GCC 13+，本项目用 15.2）：

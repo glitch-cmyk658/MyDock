@@ -20,9 +20,17 @@ set SRC=src\main.cpp src\util.cpp src\apps.cpp src\dock.cpp src\launcher.cpp src
 rem -lversion: 读 exe 里的 FileDescription（Dock 运行区的显示名），2026-10-11 加
 set LIBS=-luser32 -lgdi32 -lgdiplus -lshell32 -lole32 -loleaut32 -lcomctl32 -lshlwapi -ldwmapi -luuid -lwinmm -limm32 -liphlpapi -lwlanapi -lbthprops -lversion
 
+rem 2026-10-11 - 资源（exe 图标 + 版本信息）：windres 编成 .o 一起链进去
+windres mydock.rc -O coff -o mydock_res.o
+if errorlevel 1 (
+    echo.
+    echo [失败] 资源编译有错（windres），看上面的输出
+    exit /b 1
+)
+
 g++ -std=c++17 -O2 -municode -static -mwindows ^
     -DUNICODE -D_UNICODE -DNOMINMAX -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 ^
-    %SRC% -o MyDock.exe %LIBS%
+    %SRC% mydock_res.o -o MyDock.exe %LIBS%
 
 if errorlevel 1 (
     echo.

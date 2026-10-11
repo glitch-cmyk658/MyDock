@@ -19,6 +19,7 @@ add_executable(MyDock WIN32
     src/svgicon.cpp
     src/flyout.cpp
     src/ccenter.cpp
+    mydock.rc
 )
 
 target_compile_definitions(MyDock PRIVATE

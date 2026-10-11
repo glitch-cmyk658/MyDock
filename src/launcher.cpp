@@ -872,11 +872,10 @@ void Launcher::LaunchIndex(int slot) {
     //   关掉自己），但「算不算已经在运行」的判据必须跟那边一致 ——
     //   只找可见窗口的话，缩在托盘里的微信会被当成没开，一点就重新扫码。
     if (!a.target.empty()) {
-        HWND found = FindProcessWindowAny(a.target);
+        HWND found = FindProcessWindowAny(a.target, a.name);
         if (found) {
-            if (!IsWindowVisible(found)) ShowWindow(found, SW_SHOW);
-            if (IsIconic(found)) ShowWindow(found, SW_RESTORE);
-            SetForegroundWindow(found);
+            // 与 appaction.cpp 共用同一套恢复激活序列（util::RestoreAndActivate）
+            RestoreAndActivate(found, a.name, a.target);
             Close();
             return;
         }

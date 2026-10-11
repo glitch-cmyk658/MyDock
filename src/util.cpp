@@ -654,14 +654,34 @@ namespace {
 
 struct FindCtx {
     std::wstring lowerPathW;   // 统一转小写后的 exe 路径
-    HWND found;
+    std::wstring titleHint;    // 应用显示名（可空）：标题含它的候选是主窗口的强信号
+    std::vector<HWND> vis;     // 该进程所有合格的可见顶层窗口
+    std::vector<HWND> hid;     // 同上，但藏着的（缩托盘时主窗口在这里）
     bool acceptHidden = false; // 第二轮才打开：见 FindProcessWindowAny 的说明
 };
 
+// 类名/标题里带 tray 的窗口一律不要：托盘图标消息窗口（微信的
+// Qt51514WxTrayIconMessageWindowClass）藏起来时的矩形比主窗口还大，
+// 「挑面积最大」会正中它 —— 显出来就是一块黑屏（2026-10-11 实测翻过车）。
+bool IsTrayHelperWindow(HWND h) {
+    wchar_t cls[64] = {}, ttl[128] = {};
+    GetClassNameW(h, cls, 64);
+    GetWindowTextW(h, ttl, 128);
+    auto hasTray = [](const wchar_t* s) {
+        for (const wchar_t* p = s; *p; ++p) {
+            wchar_t a = towlower(*p);
+            if (a == L't' && _wcsnicmp(p, L"tray", 4) == 0) return true;
+        }
+        return false;
+    };
+    return hasTray(cls) || hasTray(ttl);
+}
+
 BOOL CALLBACK FindProcEnum(HWND h, LPARAM lp) {
     FindCtx* c = reinterpret_cast<FindCtx*>(lp);
-    if (!IsWindowVisible(h)) {
-        if (!c->acceptHidden) return TRUE;
+    const bool visible = IsWindowVisible(h) != FALSE;
+    if (!visible && !c->acceptHidden) return TRUE;
+    if (!visible) {
         // 藏起来的窗口里混着各种后台东西，多卡两道：
         //   工具窗口不是主窗口；连标题都没有的窗口切过去也没意义。
         if (GetWindowLongW(h, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) return TRUE;
@@ -669,6 +689,7 @@ BOOL CALLBACK FindProcEnum(HWND h, LPARAM lp) {
     }
     // 对话框、工具窗口不算 —— 它们是主窗口的一部分，切过去没意义
     if (GetWindow(h, GW_OWNER)) return TRUE;
+    if (IsTrayHelperWindow(h)) return TRUE;
 
     DWORD pid = 0;
     GetWindowThreadProcessId(h, &pid);
@@ -679,7 +700,6 @@ BOOL CALLBACK FindProcEnum(HWND h, LPARAM lp) {
 
     wchar_t buf[MAX_PATH] = {};
     DWORD sz = MAX_PATH;
-    BOOL stop = FALSE;
     if (QueryFullProcessImageNameW(p, 0, buf, &sz)) {
         // 路径大小写可能不一致（C:\ 和 c:\），统一小写再比
         std::wstring s = buf;
@@ -687,12 +707,39 @@ BOOL CALLBACK FindProcEnum(HWND h, LPARAM lp) {
             if (ch >= L'A' && ch <= L'Z') ch = static_cast<wchar_t>(ch - L'A' + L'a');
         }
         if (s == c->lowerPathW) {
-            c->found = h;
-            stop = TRUE;
+            // ★ 全收，不再「第一个就停」。微信这类应用进程里有一堆隐藏的
+            //   顶层辅助窗口，第一个撞上的可能是辅助窗口 —— 对死壳做恢复，
+            //   主窗口明明在，显出来的却是别人。
+            (visible ? c->vis : c->hid).push_back(h);
         }
     }
     CloseHandle(p);
-    return stop ? FALSE : TRUE;
+    return TRUE;   // 继续枚举，收齐所有候选再挑
+}
+
+// 从候选里挑「主窗口」。
+// 评分 = 窗口面积；标题包含应用显示名（「微信」→ 标题「微信」）的候选
+// 面积按 8 倍计 —— 主窗口的标题就是应用名（或其开头），辅助窗口不是。
+// 隐藏窗口的 GetWindowRect 仍返回它藏起来前的矩形，缩托盘状态下也能比。
+HWND PickMainWindow(const std::vector<HWND>& v, const std::wstring& hint) {
+    HWND best = nullptr;
+    LONG64 bestScore = -1;
+    for (HWND h : v) {
+        RECT r = {};
+        if (!GetWindowRect(h, &r)) continue;
+        LONG64 score =
+            static_cast<LONG64>(r.right - r.left) * (r.bottom - r.top);
+        if (!hint.empty()) {
+            wchar_t ttl[128] = {};
+            GetWindowTextW(h, ttl, 128);
+            if (wcsstr(ttl, hint.c_str())) score *= 8;
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            best = h;
+        }
+    }
+    return best;
 }
 
 }  // namespace
@@ -700,29 +747,149 @@ BOOL CALLBACK FindProcEnum(HWND h, LPARAM lp) {
 namespace {
 
 
-HWND FindProcWindowImpl(const std::wstring& exePath, bool acceptHidden) {
+HWND FindProcWindowImpl(const std::wstring& exePath, bool acceptHidden,
+                        const std::wstring& titleHint) {
     if (exePath.empty()) return nullptr;
 
     FindCtx ctx = {};
     ctx.lowerPathW = NormalizePath(exePath);
-    ctx.found = nullptr;
+    ctx.titleHint = titleHint;
     ctx.acceptHidden = acceptHidden;
 
     EnumWindows(FindProcEnum, reinterpret_cast<LPARAM>(&ctx));
-    return ctx.found;
+    if (!ctx.vis.empty()) return PickMainWindow(ctx.vis, titleHint);
+    return PickMainWindow(ctx.hid, titleHint);
 }
 
 }  // namespace
 
 HWND FindProcessWindow(const std::wstring& exePath) {
-    return FindProcWindowImpl(exePath, false);
+    return FindProcWindowImpl(exePath, false, L"");
 }
 
-HWND FindProcessWindowAny(const std::wstring& exePath) {
+HWND FindProcessWindowAny(const std::wstring& exePath,
+                          const std::wstring& titleHint) {
     // 先按老规矩找看得见的；找不到再回头接受藏起来的
-    HWND w = FindProcWindowImpl(exePath, false);
+    HWND w = FindProcWindowImpl(exePath, false, titleHint);
     if (w) return w;
-    return FindProcWindowImpl(exePath, true);
+    return FindProcWindowImpl(exePath, true, titleHint);
+}
+
+bool RestoreAndActivate(HWND w, const std::wstring& name,
+                        const std::wstring& exePath) {
+    if (!w || !IsWindow(w)) return false;
+
+    // ---- 缩托盘（被 HIDE）态：先借应用自己的「打开」全局热键 ----
+    // 七轮实测结论：点 X 缩托盘的窗口，系统级恢复（SW_SHOWMINIMIZED、
+    // SC_RESTORE、SetActiveWindow/SetFocus、连真实注入点击）全都救不活 ——
+    // Qt 层认为窗口已关闭，输入根本进不去。唯一有效的是微信自己的
+    // 「打开微信」全局热键（默认 Ctrl+Alt+W，本机实测：发出去之后窗口
+    // 亮到前台且完全可用 —— 它内部就是托盘点击同款的 show+activate）。
+    // 只对微信/Weixin 做（别的程序占了这个热键会误触）；发完等最多 1.5s，
+    // 没亮再走系统级恢复兜底（最小化态的恢复一直是好的）。
+    std::wstring exeLow = Lower(exePath);
+    const bool isWeChat = exeLow.find(L"weixin") != std::wstring::npos ||
+                          exeLow.find(L"wechat") != std::wstring::npos;
+    if (!IsWindowVisible(w) && isWeChat) {
+        INPUT seq[6] = {};
+        int n = 0;
+        auto key = [&](WORD vk, bool up) {
+            seq[n].type = INPUT_KEYBOARD;
+            seq[n].ki.wVk = vk;
+            if (up) seq[n].ki.dwFlags = KEYEVENTF_KEYUP;
+            ++n;
+        };
+        key(VK_CONTROL, false); key(VK_MENU, false);
+        key('W', false);        key('W', true);
+        key(VK_MENU, true);     key(VK_CONTROL, true);
+        SendInput(n, seq, sizeof(INPUT));
+        Log(L"应用操作：%ls 缩在托盘，借「打开微信」热键唤醒", name.c_str());
+        for (int i = 0; i < 15 && !IsWindowVisible(w); ++i) Sleep(100);
+        if (IsWindowVisible(w)) {
+            Log(L"应用操作：%ls 已被热键唤醒到前台", name.c_str());
+            return true;   // 前台是微信自己设的，不用我们再切
+        }
+        Log(L"应用操作：%ls 热键未唤醒（快捷键可能没开），走系统恢复", name.c_str());
+    }
+
+    // ---- 状态切换：走应用自己的 WM_SYSCOMMAND ----
+    // 藏着的窗口先 SW_SHOWMINIMIZED 显形（这一步系统层面带激活），随后
+    // PostMessage SC_RESTORE —— 消息在目标线程排队，由微信自己的 WndProc
+    // 处理，它的 Qt 层会同步更新内部激活状态。Sleep 60ms 给它消化时间，
+    // Dock 消息循环停这么一下看不出来。
+    if (!IsWindowVisible(w)) {
+        ShowWindow(w, SW_SHOWMINIMIZED);
+        PostMessageW(w, WM_SYSCOMMAND, SC_RESTORE, 0);
+        Sleep(60);
+    } else if (IsIconic(w)) {
+        PostMessageW(w, WM_SYSCOMMAND, SC_RESTORE, 0);
+        Sleep(60);
+    } else {
+        ShowWindow(w, SW_SHOW);
+    }
+
+    // ---- 激活：ALT 豁免 + 输入队列并接（接前台线程）+ 全套三连 ----
+    INPUT altDown = {};
+    altDown.type = INPUT_KEYBOARD;
+    altDown.ki.wVk = VK_MENU;
+    INPUT altUp = altDown;
+    altUp.ki.dwFlags = KEYEVENTF_KEYUP;
+
+    const DWORD targetTid = GetWindowThreadProcessId(w, nullptr);
+    const DWORD myTid = GetCurrentThreadId();
+    const HWND fgWnd = GetForegroundWindow();
+    const DWORD fgTid = fgWnd ? GetWindowThreadProcessId(fgWnd, nullptr) : 0;
+
+    const BOOL attTarget =
+        (targetTid && targetTid != myTid)
+            ? AttachThreadInput(myTid, targetTid, TRUE) : FALSE;
+    // ★ Hans Passant 的修正：attach 到「现在拥有焦点的前台线程」——
+    //   焦点窃取检查发生在调用者与前台线程之间，只接目标线程可能拦不住。
+    const BOOL attFg =
+        (fgTid && fgTid != myTid && fgTid != targetTid)
+            ? AttachThreadInput(myTid, fgTid, TRUE) : FALSE;
+
+    SendInput(1, &altDown, sizeof(INPUT));
+    const BOOL fg = SetForegroundWindow(w);
+    BringWindowToTop(w);
+    // ★ 名分（前台）之外还要里子（激活态）：缺了这两个，应用内部
+    //   认为自己 inactive —— 单击全被当作「激活点击」吞掉。
+    SetActiveWindow(w);
+    SetFocus(w);
+    SendInput(1, &altUp, sizeof(INPUT));
+
+    if (attFg) AttachThreadInput(myTid, fgTid, FALSE);
+    if (attTarget) AttachThreadInput(myTid, targetTid, FALSE);
+
+    // ---- 终极手段：替用户「点它一下」----
+    // 上面的键盘/队列手段全是隔空喊话，微信 4.x 的 Qt 层仍然自认 inactive
+    // （用户录屏实测：悬停高亮正常、双击有效，单击全被吞）。用户手动操作
+    // 之所以有效，靠的是亲手点击 —— 那会走真实的 WM_MOUSEACTIVATE 激活序列。
+    // SendInput 注入的鼠标点击走硬件输入路径，系统层面与亲手点无法区分，
+    // 一定会触发完整激活。点在标题栏左侧空白（避开图钉/最小化/关闭和内容），
+    // 点完把光标放回原处，用户只看到光标闪一下。
+    RECT r = {};
+    if (GetWindowRect(w, &r) && r.right - r.left > 200) {
+        const int x = r.left + MulDiv(r.right - r.left, 1, 10);
+        const int y = r.top + 14;
+        POINT save = {};
+        GetCursorPos(&save);
+        SetCursorPos(x, y);
+        Sleep(30);
+        INPUT click[2] = {};
+        click[0].type = INPUT_MOUSE;
+        click[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+        click[1].type = INPUT_MOUSE;
+        click[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+        SendInput(2, click, sizeof(INPUT));
+        Sleep(20);
+        SetCursorPos(save.x, save.y);
+        Log(L"应用操作：%ls 已在 (%d,%d) 补一发激活点击", name.c_str(), x, y);
+    }
+
+    Log(L"应用操作：%ls 恢复激活 %ls（SetForegroundWindow=%d）",
+        name.c_str(), fg ? L"成功" : L"失败", static_cast<int>(fg));
+    return fg != FALSE;
 }
 
 bool IsProcessRunning(const std::wstring& exePath) {

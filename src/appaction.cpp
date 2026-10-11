@@ -151,12 +151,26 @@ AppOutcome RunAppAction(int cmd, const AppItem& app, const AppPlaces& places) {
             //   只找可见窗口会得出「它没在运行」，于是再启动一次，微信把这次当成
             //   新的一次登录，结果每次从 Dock 打开都要重新扫码。
             if (!app.target.empty()) {
-                HWND found = FindProcessWindowAny(app.target);
+                HWND found = FindProcessWindowAny(app.target, app.name);
                 if (found) {
-                    // 从托盘里捞出来的窗口是藏着的，先显形再切过去
-                    if (!IsWindowVisible(found)) ShowWindow(found, SW_SHOW);
-                    if (IsIconic(found)) ShowWindow(found, SW_RESTORE);
-                    SetForegroundWindow(found);
+                    // 诊断：这次切的是哪个窗口。多窗口进程（微信）「找错窗口」
+                    // 是恢复失败的头号嫌疑 —— 记下类名/标题/矩形，再出事日志能对出找没找错。
+                    wchar_t cls[64] = {}, ttl[128] = {};
+                    GetClassNameW(found, cls, 64);
+                    GetWindowTextW(found, ttl, 128);
+                    RECT rr = {};
+                    GetWindowRect(found, &rr);
+                    Log(L"应用操作：%ls 切换目标 hwnd=%p class=%ls title=%ls rect=(%ld,%ld,%ld,%ld) 可见=%d",
+                        app.name.c_str(), found, cls, ttl,
+                        static_cast<long>(rr.left), static_cast<long>(rr.top),
+                        static_cast<long>(rr.right), static_cast<long>(rr.bottom),
+                        static_cast<int>(IsWindowVisible(found)));
+                    // ★ 恢复+激活的完整序列收拢到 util 的 RestoreAndActivate
+                    //   （Dock/启动台共用一份）：WM_SYSCOMMAND 状态切换 +
+                    //   ALT 豁免 + attach 前台线程 + SetActiveWindow/SetFocus。
+                    //   以前缺 SetActiveWindow/SetFocus，微信窗口有前台名分
+                    //   但内部还是 inactive —— 单击全被吞、双击反而有效。
+                    RestoreAndActivate(found, app.name, app.target);
                     r.launched = true;
                     return r;
                 }
