@@ -5,6 +5,7 @@
 #include <gdiplus.h>
 #include <string>
 #include <vector>
+#include <functional>
 
 namespace mydock {
 
@@ -136,14 +137,11 @@ bool RestoreAndActivate(HWND w, const std::wstring& name,
                         const std::wstring& exePath = L"",
                         HANDLE stopEvent = nullptr);
 // 后台线程版：立刻返回，恢复/激活序列（含最多 1.5s 的热键等待）
-// 在 detached 线程里跑，Dock 消息循环一毫秒都不停。
-// 线程纪律与 dock.cpp 的 RunScan 同一套标准：退出能等到（StopWakeJob）、
-// 同一时间只允许一个任务（重入请求直接丢弃）。
+// 在后台线程里跑，Dock 消息循环一毫秒都不停。
+// 后台线程版：立刻返回，恢复/激活序列（含最多 1.5s 的热键等待）
+// 在后台线程里跑，Dock 消息循环一毫秒都不停。
 void RestoreAndActivateAsync(HWND w, const std::wstring& name,
                              const std::wstring& exePath = L"");
-// 进程收尾时调用（main.cpp 清理段）：喊停 + 等当前唤醒任务收完，
-// 保证 Log / SendInput 不会跨过静态析构、退出瞬间不给别的应用注入点击。
-void StopWakeJob();
 
 // 这个 exe 有没有进程在跑（不管它有没有窗口）。
 // 用来兜住最后一种情况：进程还在、但一个窗口都找不到 ——
@@ -156,11 +154,13 @@ bool IsProcessRunning(const std::wstring& exePath);
 // 过滤：只留**正在运行**的（注册表里积了大量历史残留）、去重、排除
 // MyDock 自己；名字 = 托盘悬停名 → exe FileDescription → 文件名。
 // 按名字排序。点击后的「激活或拉起」由调用方做（topbar）。
-struct TrayApp {
-    std::wstring exePath;
-    std::wstring name;
-};
-std::vector<TrayApp> EnumRunningTrayApps();
+// 通用后台任务槽：同一时间只跑一个（重入请求丢弃并记日志），
+// 退出能等到（StopWakeJob）。fn 收到退出事件句柄，长等待自行响应。
+// 唤醒微信、托盘枚举/触发共用这一个槽 —— 它们互相排比没有意义。
+void ScheduleBackground(const wchar_t* what, std::function<void(HANDLE stop)> fn);
+// 进程收尾时调用（main.cpp 清理段）：喊停 + 等当前任务收完，
+// 保证 Log / SendInput 不会跨过静态析构、退出瞬间不给别的应用注入点击。
+void StopWakeJob();
 
 // 2026-10-11 - AI - 开机自启（HKCU Run 键）与「重启自己」
 // 托盘菜单和顶栏 ⏏ 菜单共用，所以放公共区。

@@ -4,6 +4,7 @@
 #include "flyout.h"   // 2026-10-11 - AI - 时钟点开的日历面板
 #include "util.h"
 #include "theme.h"
+#include "trayuia.h"
 
 #include <algorithm>
 #include <cmath>
@@ -961,23 +962,22 @@ void TopBar::ShowIconMenu(int id) {
             // 原来的 MyDock 系统项全部移去左上角圆圈菜单（ShowSystemMenu）。
             head(L"托盘", L"");
             sep();
-            trayExe_.clear();
-            const std::vector<TrayApp> apps = EnumRunningTrayApps();
-            int n = 0;
-            for (const TrayApp& t : apps) {
-                if (n >= 18) {   // 菜单高度保护：超过 18 项截断并记日志
-                    Log(L"托盘：%zu 个在跑，只显示前 18 个", apps.size());
-                    break;
-                }
-                line(kStTrayBase + n, t.name);
-                trayExe_.push_back(t.exePath);
-                ++n;
+            trayNames_.clear();
+            // 缓存直接上（打开秒出）；过期/为空就在后台重走舞步刷新，
+            // 本次先提示，下次点开就是新清单
+            for (const std::wstring& n : TrayCachedNames()) {
+                if (trayNames_.size() >= 18) break;   // 菜单高度保护
+                line(kStTrayBase + static_cast<int>(trayNames_.size()), n);
+                trayNames_.push_back(n);
             }
-            if (n == 0) {
+            if (trayNames_.empty()) {
+                TrayRefreshAsync();
                 MenuItem idle;
                 idle.cmd = 0;              // 点了没反应（cmd 0 = 取消语义）
-                idle.label = L"（没有在运行的托盘应用）";
+                idle.label = L"（托盘列表整理中，稍后再点一次）";
                 items.push_back(std::move(idle));
+            } else if (TrayCacheAgeMs() > 90 * 1000) {
+                TrayRefreshAsync();        // 过期就在后台刷新，供下次使用
             }
             break;
         }
@@ -1034,19 +1034,12 @@ void TopBar::RunIconMenuCommand(int id, int cmd) {
     };
 
     // ---- 点了某个托盘应用 ----
-    // 有窗口 → 走微信唤醒那套（后台线程恢复+激活）；没窗口 → 拉起 exe，
-    // 纯托盘应用（输入法这类）由它自己的单实例逻辑亮出界面。
+    // 后台重走舞步（亮屏外任务栏 → 开溢出区 → 按名 Invoke）——
+    // 触发的是应用**自己的托盘点击行为**，和手点托盘完全一致
     if (cmd >= kStTrayBase) {
         const size_t i = static_cast<size_t>(cmd - kStTrayBase);
-        if (i >= trayExe_.size()) return;
-        const std::wstring exe = trayExe_[i];
-        const HWND w = FindProcessWindowAny(exe);
-        if (w) {
-            RestoreAndActivateAsync(w, exe, exe);
-            return;
-        }
-        Log(L"托盘：%ls 没有可见窗口，直接拉起 exe", exe.c_str());
-        ShellExecuteW(nullptr, L"open", exe.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        if (i >= trayNames_.size()) return;
+        TrayInvokeByNameAsync(trayNames_[i]);
         return;
     }
 

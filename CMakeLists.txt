@@ -20,6 +20,7 @@ add_executable(MyDock WIN32
     src/flyout.cpp
     src/ccenter.cpp
     src/theme.cpp
+    src/trayuia.cpp
     mydock.rc
 )
 
