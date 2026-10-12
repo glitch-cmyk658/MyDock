@@ -103,7 +103,8 @@ private:
     bool reserve_ = true;         // settings.ini [topbar] reserve：占不占那一截工作区
     bool appbar_ = false;         // 已经登记成 AppBar 了吗
     CalendarFlyout flyout_;       // 2026-10-11 - AI - 点时钟弹出的日历面板
-    std::vector<std::wstring> trayNames_;  // 2026-10-12 - AI - 托盘菜单项（缓存的名字）
+    std::vector<std::wstring> trayNames_;  // 2026-10-12 - AI - 托盘菜单项（完整名，匹配用）
+    std::vector<Gdiplus::Bitmap*> trayIcons_;  // 行首图标位图（菜单生存期，重建时清）
     ControlCenter ccenter_;       // 2026-10-11 - AI - 点开关图标弹出的控制中心
     bool spaceReleased_ = false;  // 藏起来的时候把工作区还回去了，亮回来要重新登记
     bool inAppBarPos_ = false;    // 正在摆位置，防 ABN_POSCHANGED 回环

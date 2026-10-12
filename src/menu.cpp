@@ -55,12 +55,14 @@ void MeasureMenu(const std::vector<MenuItem>& items, int& w, int& h, int& rowH) 
 
     float widest = 0.0f;
     bool needTagRoom = false;      // 标题行右下角还挂着一枚小字（"应用"/"系统"）
+    bool needIconRoom = false;     // 2026-10-12 - AI - 有行带图标时整体让出图标列
     int total = m.padV * 2;
     for (const MenuItem& it : items) {
         if (it.separator) {
             total += m.sepH;
             continue;
         }
+        if (it.icon) needIconRoom = true;
         if (it.title && !it.tag.empty()) needTagRoom = true;
         Gdiplus::RectF r;
         pg.MeasureString(it.label.c_str(), static_cast<INT>(it.label.size()),
@@ -70,7 +72,8 @@ void MeasureMenu(const std::vector<MenuItem>& items, int& w, int& h, int& rowH) 
     }
     // 宽 = 最长的那行字 + 左起 m.leading + 右边同样留 m.leading。
     // 有标题行时右边再让出 tag 的位置，不然小字会压在应用名上。
-    w = static_cast<int>(widest) + m.leading * 2 + (needTagRoom ? Dpi(48) : 0);
+    w = static_cast<int>(widest) + m.leading * 2 + (needTagRoom ? Dpi(48) : 0)
+        + (needIconRoom ? Dpi(26) : 0);
     w = std::max(w, Dpi(120));
     h = total;
 }
@@ -197,7 +200,17 @@ void DrawMenuBox(Gdiplus::Graphics& g, const std::vector<MenuItem>& items,
             g.FillPath(&hb, &hp);
         }
 
-        const float textX = static_cast<float>(x + m.leading);
+        float textX = static_cast<float>(x + m.leading);
+        if (it.icon) {
+            // 2026-10-12 - AI - 行首图标（托盘菜单用应用真图标，一眼认出是谁）。
+            // 文字随之后移；没图标的行（标题）保持原位 —— 跟 macOS 的层级一致。
+            const float isz = static_cast<float>(Dpi(18));
+            g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+            g.DrawImage(it.icon, Gdiplus::RectF(
+                textX, static_cast<float>(cy) + (static_cast<float>(rowH) - isz) / 2.0f,
+                isz, isz));
+            textX += isz + static_cast<float>(Dpi(8));
+        }
         if (it.title) {
             // 标题 = 被操作的对象名。本机重名的应用不少，不写清楚的话
             // 光看菜单不知道自己在动谁。

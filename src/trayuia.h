@@ -17,8 +17,14 @@
 
 namespace mydock {
 
-// 缓存的托盘溢出区名单（按钮名第一行）。线程安全。
-std::vector<std::wstring> TrayCachedNames();
+// 托盘溢出区的一项：展示名（按钮名第一行）+ exe 路径（提取图标用）
+struct TrayEntry {
+    std::wstring name;
+    std::wstring exePath;
+};
+
+// 缓存的托盘溢出区名单。线程安全。
+std::vector<TrayEntry> TrayCachedEntries();
 
 // 缓存是否有效（没有任何一次成功枚举时为 false）
 bool TrayCacheReady();

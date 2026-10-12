@@ -12,9 +12,25 @@ namespace {
 
 // ---- 缓存（菜单打开时直接用，后台线程负责刷新） ----
 std::mutex g_cacheMtx;
-std::vector<std::wstring> g_cache;
+std::vector<TrayEntry> g_cache;
 bool g_cacheValid = false;
 unsigned long long g_cacheAt = 0;
+
+// UIA 元素 → 所属进程的 exe 路径（图标提取用）。拿不到返回空。
+std::wstring ExeOfElement(IUIAutomationElement* el) {
+    DWORD pid0 = 0;
+    int ipid = 0;
+    if (FAILED(el->get_CurrentProcessId(&ipid)) || !ipid) return L"";
+    DWORD pid = static_cast<DWORD>(ipid);
+    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!p) return L"";
+    wchar_t buf[MAX_PATH * 2] = {};
+    DWORD sz = MAX_PATH * 2;
+    std::wstring out;
+    if (QueryFullProcessImageNameW(p, 0, buf, &sz)) out = buf;
+    CloseHandle(p);
+    return out;
+}
 
 std::wstring FirstLine(const std::wstring& s) {
     const size_t p = s.find(L'\n');
@@ -113,7 +129,7 @@ bool InvokeEl(IUIAutomationElement* el) {
 
 // 完整舞步：names 非空 → 枚举溢出区；invokeName 非空 → 按名触发。
 // stop 有信号时在各个等待点尽快撤退（先恢复任务栏原位再返回）。
-static bool TrayDance(std::vector<std::wstring>* names,
+static bool TrayDance(std::vector<TrayEntry>* entries,
                       const std::wstring* invokeName, HANDLE stop) {
     auto snooze = [&](DWORD ms) {
         return stop && WaitForSingleObject(stop, ms) == WAIT_OBJECT_0;
@@ -162,13 +178,13 @@ static bool TrayDance(std::vector<std::wstring>* names,
                     if (SUCCEEDED(uia.uia->ElementFromHandle(isl, &islEl)) && islEl) {
                         std::vector<std::pair<std::wstring, IUIAutomationElement*>> ib;
                         CollectButtons(uia.uia, islEl, ib);
-                        if (names) {
+                        if (entries) {
                             for (auto& b : ib) {
                                 const std::wstring fl = FirstLine(b.first);
-                                if (!fl.empty() && fl != L"MyDock")
-                                    names->push_back(fl);
+                                if (fl.empty() || fl == L"MyDock") continue;
+                                entries->push_back({fl, ExeOfElement(b.second)});
                             }
-                            done = !names->empty();
+                            done = !entries->empty();
                         }
                         if (invokeName) {
                             for (auto& b : ib) {
@@ -203,7 +219,7 @@ static bool TrayDance(std::vector<std::wstring>* names,
     return done;
 }
 
-std::vector<std::wstring> TrayCachedNames() {
+std::vector<TrayEntry> TrayCachedEntries() {
     std::lock_guard<std::mutex> lk(g_cacheMtx);
     return g_cache;
 }
@@ -221,10 +237,10 @@ unsigned long long TrayCacheAgeMs() {
 
 void TrayRefreshAsync() {
     ScheduleBackground(L"托盘枚举", [](HANDLE stop) {
-        std::vector<std::wstring> names;
-        if (TrayDance(&names, nullptr, stop)) {
+        std::vector<TrayEntry> entries;
+        if (TrayDance(&entries, nullptr, stop)) {
             std::lock_guard<std::mutex> lk(g_cacheMtx);
-            g_cache = names;
+            g_cache = std::move(entries);
             g_cacheValid = true;
             g_cacheAt = GetTickCount64();
         }

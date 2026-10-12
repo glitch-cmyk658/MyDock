@@ -427,6 +427,8 @@ void DrawStatusIcon(Gdiplus::Graphics& g, int id, float cx, float cy, float s,
 }  // namespace
 
 TopBar::~TopBar() {
+    for (Gdiplus::Bitmap* b : trayIcons_) delete b;
+    trayIcons_.clear();
     if (hwnd_) {
         KillTimer(hwnd_, kTimerTick);
         KillTimer(hwnd_, kTimerAnim);
@@ -865,11 +867,13 @@ void TopBar::ShowIconMenu(int id) {
         it.separator = true;
         items.push_back(std::move(it));
     };
-    auto line = [&](int cmd, const std::wstring& label, bool checked = false) {
+    auto line = [&](int cmd, const std::wstring& label, bool checked = false,
+                    Gdiplus::Bitmap* icon = nullptr) {
         MenuItem it;
         it.cmd     = cmd;
         it.label   = label;
         it.checked = checked;
+        it.icon    = icon;
         items.push_back(std::move(it));
     };
     auto pct = [](int v) { return std::to_wstring(v) + L"%"; };
@@ -962,13 +966,33 @@ void TopBar::ShowIconMenu(int id) {
             // 原来的 MyDock 系统项全部移去左上角圆圈菜单（ShowSystemMenu）。
             head(L"托盘", L"");
             sep();
+            // 上一轮的图标位图先清掉（MenuItem 里只是引用，不拥有）
+            for (Gdiplus::Bitmap* b : trayIcons_) delete b;
+            trayIcons_.clear();
             trayNames_.clear();
+
             // 缓存直接上（打开秒出）；过期/为空就在后台重走舞步刷新，
             // 本次先提示，下次点开就是新清单
-            for (const std::wstring& n : TrayCachedNames()) {
-                if (trayNames_.size() >= 18) break;   // 菜单高度保护
-                line(kStTrayBase + static_cast<int>(trayNames_.size()), n);
-                trayNames_.push_back(n);
+            int n = 0;
+            for (const TrayEntry& t : TrayCachedEntries()) {
+                if (n >= 10) {   // 长度限制：用户点名要的
+                    Log(L"托盘：%zu 项在跑，只显示前 10 个", TrayCachedEntries().size());
+                    break;
+                }
+                // 展示名截断 —— NVIDIA 那种全名能把菜单撑到一半屏幕宽
+                std::wstring label = t.name;
+                if (label.size() > 30) label = label.substr(0, 30) + L"…";
+
+                // 行首图标 = 应用真图标（从 exe 提取 32px 转位图）
+                HICON ic = nullptr;
+                ExtractIconExW(t.exePath.c_str(), 0, nullptr, &ic, 1);
+                Gdiplus::Bitmap* bmp = ic ? BitmapFromIcon(ic) : nullptr;
+                if (ic) DestroyIcon(ic);
+                if (bmp) trayIcons_.push_back(bmp);
+
+                line(kStTrayBase + n, label, false, bmp);
+                trayNames_.push_back(t.name);   // 匹配用完整名
+                ++n;
             }
             if (trayNames_.empty()) {
                 TrayRefreshAsync();

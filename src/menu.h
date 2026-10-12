@@ -15,6 +15,8 @@ struct MenuItem {
     bool        checked = false;     // 左侧打个勾，表示当前状态
     bool        title = false;       // 标题行（被操作的对象名）：粗体灰字，不可点
     std::wstring tag = L"应用";      // 标题行右下角的小字；空串就不画
+    Gdiplus::Bitmap* icon = nullptr;       // 2026-10-12 - AI - 行首图标（非拥有，
+                                            // 生存期归构造菜单的一方）
 };
 
 // 量一遍菜单该多大。宽度跟着最长的那一项走 —— 定死宽度的话，
