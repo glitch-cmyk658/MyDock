@@ -43,7 +43,7 @@
 ## 下载
 
 无需自己编译：到 [Releases](https://github.com/glitch-cmyk658/MyDock/releases/latest)
-下载最新版 zip（当前 `MyDock-v1.0.1.zip`），解压后把 `MyDock.exe` 放到任意目录双击运行。
+下载最新版 zip（当前 `MyDock-v1.0.2.zip`），解压后把 `MyDock.exe` 放到任意目录双击运行。
 
 > 首次运行若弹出 SmartScreen 警告（**Windows 已保护你的电脑**），点
 > **更多信息 → 仍要运行**——程序未购买代码签名证书，属正常现象，仅首次。
