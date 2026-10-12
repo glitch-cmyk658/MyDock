@@ -130,14 +130,19 @@ HWND FindProcessWindowAny(const std::wstring& exePath,
 //   ③ 状态切换走 WM_SYSCOMMAND（应用自己处理 SC_MINIMIZE/SC_RESTORE 并更新
 //      激活状态），比 ShowWindow 更贴近用户手动点最小化按钮的路径。
 // exePath 用于判断是否微信/Weixin：只有它有「打开微信」热键可借
+// stopEvent：进程收尾用的退出信号（仅供后台线程版传入），同步调用传空
 bool RestoreAndActivate(HWND w, const std::wstring& name,
-                        const std::wstring& exePath = L"");
-// 上面的后台线程版：立刻返回，恢复/激活序列（含最多 1.5s 的热键等待）
-// 全在 detached 线程里跑，Dock 消息循环一毫秒都不停。
-// 结果不再返回给调用方（两个调用方都不看返回值），成败只在日志里。
-// 线程安全依赖：Log 自带锁；线程里只碰目标窗口的句柄和 SendInput。
+                        const std::wstring& exePath = L"",
+                        HANDLE stopEvent = nullptr);
+// 后台线程版：立刻返回，恢复/激活序列（含最多 1.5s 的热键等待）
+// 在 detached 线程里跑，Dock 消息循环一毫秒都不停。
+// 线程纪律与 dock.cpp 的 RunScan 同一套标准：退出能等到（StopWakeJob）、
+// 同一时间只允许一个任务（重入请求直接丢弃）。
 void RestoreAndActivateAsync(HWND w, const std::wstring& name,
                              const std::wstring& exePath = L"");
+// 进程收尾时调用（main.cpp 清理段）：喊停 + 等当前唤醒任务收完，
+// 保证 Log / SendInput 不会跨过静态析构、退出瞬间不给别的应用注入点击。
+void StopWakeJob();
 
 // 这个 exe 有没有进程在跑（不管它有没有窗口）。
 // 用来兜住最后一种情况：进程还在、但一个窗口都找不到 ——

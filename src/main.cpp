@@ -92,6 +92,10 @@ int RunApp(HINSTANCE inst) {
         }
     }   // dock / topBar 先析构干净（窗口、GDI 资源、扫描线程都在这里收尾），再往下走
 
+    // 唤醒线程可能还睡在热键等待里 —— 喊停并等它收完，
+    // 保证 Log 不会撞上静态析构、注入点击不会落进别的应用
+    mydock::StopWakeJob();
+
     if (comOwned) CoUninitialize();
     Gdiplus::GdiplusShutdown(token);
     timeEndPeriod(1);

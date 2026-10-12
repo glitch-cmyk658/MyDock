@@ -776,8 +776,13 @@ HWND FindProcessWindowAny(const std::wstring& exePath,
 }
 
 bool RestoreAndActivate(HWND w, const std::wstring& name,
-                        const std::wstring& exePath) {
+                        const std::wstring& exePath, HANDLE stopEvent) {
     if (!w || !IsWindow(w)) return false;
+    // 退出等待的小工具：既当 Sleep 用，又随时响应退出信号。
+    // 返回 true = 收到退出信号，调用方应立即收手返回。
+    auto snooze = [&](DWORD ms) {
+        return stopEvent && WaitForSingleObject(stopEvent, ms) == WAIT_OBJECT_0;
+    };
 
     // ---- 缩托盘（被 HIDE）态：先借应用自己的「打开」全局热键 ----
     // 七轮实测结论：点 X 缩托盘的窗口，系统级恢复（SW_SHOWMINIMIZED、
@@ -804,7 +809,12 @@ bool RestoreAndActivate(HWND w, const std::wstring& name,
         key(VK_MENU, true);     key(VK_CONTROL, true);
         SendInput(n, seq, sizeof(INPUT));
         Log(L"应用操作：%ls 缩在托盘，借「打开微信」热键唤醒", name.c_str());
-        for (int i = 0; i < 15 && !IsWindowVisible(w); ++i) Sleep(100);
+        for (int i = 0; i < 15 && !IsWindowVisible(w); ++i) {
+            if (snooze(100)) {   // 等待随时可被退出信号打断
+                Log(L"应用操作：%ls 唤醒等待被退出信号打断", name.c_str());
+                return false;
+            }
+        }
         if (IsWindowVisible(w)) {
             Log(L"应用操作：%ls 已被热键唤醒到前台", name.c_str());
             return true;   // 前台是微信自己设的，不用我们再切
@@ -820,10 +830,10 @@ bool RestoreAndActivate(HWND w, const std::wstring& name,
     if (!IsWindowVisible(w)) {
         ShowWindow(w, SW_SHOWMINIMIZED);
         PostMessageW(w, WM_SYSCOMMAND, SC_RESTORE, 0);
-        Sleep(60);
+        if (snooze(60)) return false;
     } else if (IsIconic(w)) {
         PostMessageW(w, WM_SYSCOMMAND, SC_RESTORE, 0);
-        Sleep(60);
+        if (snooze(60)) return false;
     } else {
         ShowWindow(w, SW_SHOW);
     }
@@ -868,6 +878,12 @@ bool RestoreAndActivate(HWND w, const std::wstring& name,
     // SendInput 注入的鼠标点击走硬件输入路径，系统层面与亲手点无法区分，
     // 一定会触发完整激活。点在标题栏左侧空白（避开图钉/最小化/关闭和内容），
     // 点完把光标放回原处，用户只看到光标闪一下。
+    // ★ 注入点击前必须查退出信号：进程收尾的瞬间把一次点击打进
+    //   别的应用，比卡 1.5s 严重得多
+    if (snooze(0)) {
+        Log(L"应用操作：%ls 退出信号到达，跳过注入点击", name.c_str());
+        return false;
+    }
     RECT r = {};
     if (GetWindowRect(w, &r) && r.right - r.left > 200) {
         const int x = r.left + MulDiv(r.right - r.left, 1, 10);
@@ -875,7 +891,10 @@ bool RestoreAndActivate(HWND w, const std::wstring& name,
         POINT save = {};
         GetCursorPos(&save);
         SetCursorPos(x, y);
-        Sleep(30);
+        if (snooze(30)) {
+            SetCursorPos(save.x, save.y);
+            return false;
+        }
         INPUT click[2] = {};
         click[0].type = INPUT_MOUSE;
         click[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
@@ -898,32 +917,84 @@ struct WakeJob {
     HWND w;
     std::wstring name;
     std::wstring exePath;
+    HANDLE stop;              // 与 g_wakeStop 同一个手动复位事件
 };
+
+// ★ 线程纪律与 dock.cpp 的 RunScan / util.cpp 的 FullScan 同一套标准：
+//   退出要能等到（StopWakeJob，main.cpp 清理段调用），不能 detached 完事 ——
+//   否则用户点完唤醒 1.5s 内退出，线程还在跑：Log 会撞上正在静态析构的
+//   g_logLock（UB），末尾的注入点击还可能落进别的应用。
+//   重入保护：同一时间只允许一个唤醒任务，进行中的新请求直接丢弃 ——
+//   第二次点击目标和第一次相同，重复执行没有意义。
+HANDLE g_wakeThread = nullptr;   // 非空 = 有任务在跑（忙标志）
+HANDLE g_wakeStop  = nullptr;    // 手动复位：请当前任务尽快收尾
+HANDLE g_wakeDone  = nullptr;    // 任务收尾时置位，StopWakeJob 等它
+std::mutex g_wakeMtx;
 
 DWORD WINAPI WakeJobProc(void* p) {
     WakeJob* job = static_cast<WakeJob*>(p);
-    // 窗口可能在排队期间被关掉 —— IsWindow 复查后再动手，
-    // ShowWindow/PostMessage 对死句柄虽然无害，但没必要白跑
+    // 窗口可能在排队期间被关掉 —— IsWindow 复查后再动手
     if (IsWindow(job->w)) {
-        RestoreAndActivate(job->w, job->name, job->exePath);
+        RestoreAndActivate(job->w, job->name, job->exePath, job->stop);
     }
+    {
+        std::lock_guard<std::mutex> lk(g_wakeMtx);
+        g_wakeThread = nullptr;   // 腾出名额
+    }
+    SetEvent(g_wakeDone);
     delete job;
     return 0;
+    // 线程句柄有意不 CloseHandle：每次唤醒漏 24 字节，进程退出统一回收 ——
+    // 换掉「线程收句柄 vs StopWakeJob 等句柄」的全部竞态，值。
 }
 }  // namespace
 
 void RestoreAndActivateAsync(HWND w, const std::wstring& name,
                              const std::wstring& exePath) {
     if (!w || !IsWindow(w)) return;
-    WakeJob* job = new WakeJob{w, name, exePath};
+
+    {
+        std::lock_guard<std::mutex> lk(g_wakeMtx);
+        if (g_wakeThread) {
+            Log(L"应用操作：唤醒任务还在跑，本次请求忽略");
+            return;
+        }
+        if (!g_wakeStop) {
+            g_wakeStop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            g_wakeDone = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        }
+        if (!g_wakeStop || !g_wakeDone) return;
+        ResetEvent(g_wakeStop);
+        ResetEvent(g_wakeDone);
+    }
+
+    WakeJob* job = new WakeJob{w, name, exePath, g_wakeStop};
     HANDLE t = CreateThread(nullptr, 0, WakeJobProc, job, 0, nullptr);
-    if (t) {
-        CloseHandle(t);   // detached：活着干完，进程退出时随进程收
-    } else {
+    if (!t) {
         Log(L"应用操作：起不来后台线程（%lu），退回同步恢复", GetLastError());
         delete job;
-        RestoreAndActivate(w, name, exePath);
+        RestoreAndActivate(w, name, exePath, nullptr);
+        return;
     }
+    {
+        std::lock_guard<std::mutex> lk(g_wakeMtx);
+        g_wakeThread = t;       // 忙标志；句柄由进程退出统一回收
+    }
+}
+
+// 退出收尾：喊停 + 等任务收完（等的是 done 事件，不是线程句柄 ——
+// 避开「等着的句柄被另一头关掉」的未定义行为）。
+void StopWakeJob() {
+    {
+        std::lock_guard<std::mutex> lk(g_wakeMtx);
+        if (!g_wakeThread) return;
+        if (g_wakeStop) SetEvent(g_wakeStop);
+        if (!g_wakeDone) return;
+    }
+    // 唤醒序列最长 ~1.7s，3s 等待正常必回。万一超时（系统极度卡顿），
+    // 任务自己活到结束 —— main.cpp 在 StopWakeJob 返回后才退出 RunApp，
+    // 静态析构仍在它后面。
+    WaitForSingleObject(g_wakeDone, 3000);
 }
 
 bool IsProcessRunning(const std::wstring& exePath) {
