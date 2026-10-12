@@ -19,6 +19,7 @@ add_executable(MyDock WIN32
     src/svgicon.cpp
     src/flyout.cpp
     src/ccenter.cpp
+    src/theme.cpp
     mydock.rc
 )
 

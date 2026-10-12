@@ -1,6 +1,7 @@
 // 2026-10-09 - AI - 自绘菜单的实现：外观只有这一份代码，Dock 和启动台共用
 #include "menu.h"
 #include "util.h"
+#include "theme.h"
 
 #include <algorithm>
 #include <cmath>
@@ -144,13 +145,14 @@ void DrawMenuBox(Gdiplus::Graphics& g, const std::vector<MenuItem>& items,
     // ② 底板
     Gdiplus::GraphicsPath bp;
     AddRoundRect(bp, box, static_cast<float>(m.radius));
-    Gdiplus::SolidBrush bb(Gdiplus::Color(plateAlpha, 246, 246, 248));
+    const Gdiplus::Color pc = Pal(false).surfacePanel;
+    Gdiplus::SolidBrush bb(Gdiplus::Color(plateAlpha, pc.GetR(), pc.GetG(), pc.GetB()));
     g.FillPath(&bb, &bp);
 
     // ③ 一圈极淡的外边界。
     //    ★ 前一版这里描的是一条白色 —— 浅色底上画白线等于什么也没画。
     //      浅色菜单要的是"淡黑线"，把菜单从同样偏亮的背景上切出来。
-    Gdiplus::Pen border(Gdiplus::Color(26, 0, 0, 0), 1.0f);
+    Gdiplus::Pen border(Pal(false).panelRim, 1.0f);
     g.DrawPath(&border, &bp);
 
     Gdiplus::Font font(L"Microsoft YaHei UI", static_cast<Gdiplus::REAL>(Dpi(13)),
@@ -172,7 +174,7 @@ void DrawMenuBox(Gdiplus::Graphics& g, const std::vector<MenuItem>& items,
             // 分隔线左右缩进到跟文字对齐（macOS 就是这么做的），
             // 顶到边上看着像菜单被切了个口子。
             // 颜色也比前一版淡了：0.13 的黑在小尺寸上会显得像一条脏印子。
-            Gdiplus::Pen sep(Gdiplus::Color(24, 0, 0, 0), 1.0f);
+            Gdiplus::Pen sep(Pal(false).separator, 1.0f);
             const float sy = static_cast<float>(cy + m.sepH / 2) + 0.5f;
             g.DrawLine(&sep, static_cast<float>(x + m.leading), sy,
                        static_cast<float>(x + w - m.leading), sy);
@@ -191,7 +193,7 @@ void DrawMenuBox(Gdiplus::Graphics& g, const std::vector<MenuItem>& items,
                                             static_cast<float>(w - hoverInset * 2),
                                             static_cast<float>(rowH)),
                          static_cast<float>(Dpi(4)));
-            Gdiplus::SolidBrush hb(Gdiplus::Color(255, 0, 122, 255));   // macOS 系统蓝
+            Gdiplus::SolidBrush hb(Pal(false).accentBlue);   // macOS 系统蓝
             g.FillPath(&hb, &hp);
         }
 
@@ -199,7 +201,7 @@ void DrawMenuBox(Gdiplus::Graphics& g, const std::vector<MenuItem>& items,
         if (it.title) {
             // 标题 = 被操作的对象名。本机重名的应用不少，不写清楚的话
             // 光看菜单不知道自己在动谁。
-            Gdiplus::SolidBrush tb(Gdiplus::Color(150, 0, 0, 0));
+            Gdiplus::SolidBrush tb(Pal(false).textSecondary);
             g.DrawString(it.label.c_str(), static_cast<INT>(it.label.size()), &fontBold,
                          Gdiplus::RectF(textX, static_cast<float>(cy),
                                         static_cast<float>(w - m.leading * 2),
@@ -208,7 +210,7 @@ void DrawMenuBox(Gdiplus::Graphics& g, const std::vector<MenuItem>& items,
             rightFmt.SetAlignment(Gdiplus::StringAlignmentFar);
             rightFmt.SetLineAlignment(Gdiplus::StringAlignmentCenter);
             if (!it.tag.empty()) {
-                Gdiplus::SolidBrush sb(Gdiplus::Color(115, 0, 0, 0));
+                Gdiplus::SolidBrush sb(Pal(false).textTertiary);
                 g.DrawString(it.tag.c_str(), static_cast<INT>(it.tag.size()), &fontTiny,
                              Gdiplus::RectF(textX, static_cast<float>(cy),
                                             static_cast<float>(w - m.leading * 2),
@@ -223,13 +225,13 @@ void DrawMenuBox(Gdiplus::Graphics& g, const std::vector<MenuItem>& items,
                 const float yy = static_cast<float>(cy + rowH / 2) + 1.0f;
                 const float s = static_cast<float>(Dpi(4));
                 Gdiplus::Pen tick(hovered ? Gdiplus::Color(255, 255, 255, 255)
-                                          : Gdiplus::Color(225, 0, 0, 0),
+                                          : Pal(false).textPrimary,
                                   std::max(1.6f, static_cast<float>(Dpi(1.8))));
                 g.DrawLine(&tick, cx - s, yy, cx - s * 0.25f, yy + s * 0.8f);
                 g.DrawLine(&tick, cx - s * 0.25f, yy + s * 0.8f, cx + s, yy - s * 0.7f);
             }
             Gdiplus::SolidBrush tb(hovered ? Gdiplus::Color(255, 255, 255, 255)
-                                           : Gdiplus::Color(235, 26, 26, 28));
+                                           : Pal(false).textPrimary);
             g.DrawString(it.label.c_str(), static_cast<INT>(it.label.size()), &font,
                          Gdiplus::RectF(textX, static_cast<float>(cy),
                                         static_cast<float>(w - m.leading * 2),

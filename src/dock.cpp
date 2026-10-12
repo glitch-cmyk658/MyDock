@@ -2,6 +2,7 @@
 #include "dock.h"
 #include "appaction.h"
 #include "util.h"
+#include "theme.h"
 
 #include <dwmapi.h>
 #include <shellapi.h>
@@ -1151,8 +1152,8 @@ void Dock::BuildPanel() {
                         0, 0, glass_->GetWidth(), glass_->GetHeight(), Gdiplus::UnitPixel);
         }
 
-        Gdiplus::SolidBrush tint(light ? Gdiplus::Color(104, 252, 252, 255)
-                                       : Gdiplus::Color(104, 28, 28, 34));
+        Gdiplus::SolidBrush tint(light ? Pal(false).dockGlass
+                                       : Pal(true).dockGlass);
         g.FillRectangle(&tint, 0, 0, w_, h_);
 
         if (noise_) {
@@ -1293,7 +1294,7 @@ void Dock::Render() {
 
         if (i < static_cast<int>(running_.size()) && running_[i]) {
             const float dot = static_cast<float>(DockDpi(4));
-            Gdiplus::SolidBrush dotBrush(Gdiplus::Color(255, 70, 132, 232));
+            Gdiplus::SolidBrush dotBrush(Pal(light).dockRunDot);
             g.FillEllipse(&dotBrush, ix + s / 2.0f - dot / 2.0f,
                           static_cast<float>(h_ - padBottom_ + DockDpi(6)), dot, dot);
         }
@@ -1323,12 +1324,12 @@ void Dock::Render() {
 
         Gdiplus::GraphicsPath lp;
         AddRoundRect(lp, Gdiplus::RectF(bx, by, boxW, boxH), static_cast<float>(DockDpi(6)));
-        Gdiplus::SolidBrush labelBg(light ? Gdiplus::Color(240, 255, 255, 255)
-                                          : Gdiplus::Color(240, 45, 45, 52));
+        Gdiplus::SolidBrush labelBg(light ? Pal(false).labelBg
+                                          : Pal(true).labelBg);
         g.FillPath(&labelBg, &lp);
 
-        Gdiplus::SolidBrush labelFg(light ? Gdiplus::Color(255, 28, 28, 34)
-                                          : Gdiplus::Color(255, 240, 240, 246));
+        Gdiplus::SolidBrush labelFg(light ? Pal(false).labelFg
+                                          : Pal(true).labelFg);
         g.DrawString(nm.c_str(), static_cast<INT>(nm.size()), &font,
                      Gdiplus::PointF(bx + padTxt, by + (boxH - txt.Height) / 2.0f), &labelFg);
     }
@@ -2150,6 +2151,8 @@ LRESULT Dock::OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
             }
             // 轮询鼠标：贴到屏幕最底边就升起来，鼠标走开一段距离后收回去
             if (wp != kTimerPoll) break;
+            // 主题文件热重载：theme.ini 存盘后下一次 Paint 就是新配色
+            ThemeReloadIfNeeded();
             POINT pt = {};
             GetCursorPos(&pt);
             // 注意：这里不能用 GetWindowRect —— Dock 收起时窗口被整体移到屏幕外，

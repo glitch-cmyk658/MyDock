@@ -5,6 +5,7 @@
 //   是个纯日历问题，跟时区无关 —— 用表算一次就对，不用赌环境。
 #include "flyout.h"
 #include "util.h"
+#include "theme.h"
 
 #include <cwchar>
 
@@ -219,22 +220,16 @@ void CalendarFlyout::Render() {
     //   周六/周日列的数字用红色；相邻月的日期淡灰；星期行灰。
     //   浅色底白卡（不透明度 97%），深色底 #1C1C1E —— 都是 macOS 系统色的近似值。
     const bool dk = dark_;
-    const Gdiplus::Color cBgTint = dk ? Gdiplus::Color(232, 28, 28, 30)
-                                      : Gdiplus::Color(246, 252, 252, 254);
-    const Gdiplus::Color cRim    = dk ? Gdiplus::Color(40, 255, 255, 255)
-                                      : Gdiplus::Color(28, 0, 0, 0);
-    const Gdiplus::Color cTitle  = dk ? Gdiplus::Color(255, 245, 245, 247)
-                                      : Gdiplus::Color(255, 29, 29, 31);
-    const Gdiplus::Color cWeek   = dk ? Gdiplus::Color(255, 142, 142, 147)
-                                      : Gdiplus::Color(255, 134, 134, 139);
-    const Gdiplus::Color cDay    = dk ? Gdiplus::Color(255, 242, 242, 247)
-                                      : Gdiplus::Color(255, 29, 29, 31);
-    const Gdiplus::Color cDim    = dk ? Gdiplus::Color(150, 99, 99, 102)
-                                      : Gdiplus::Color(150, 199, 199, 204);
-    const Gdiplus::Color cWeekend= dk ? Gdiplus::Color(255, 255, 69, 58)    // #FF453A
-                                      : Gdiplus::Color(255, 255, 59, 48);   // #FF3B30
-    const Gdiplus::Color cToday  = dk ? Gdiplus::Color(255, 255, 69, 58)
-                                      : Gdiplus::Color(255, 255, 59, 48);
+    // 颜色全部走主题调色板（默认值 = 之前的硬编码，不放 theme.ini 视觉不变）
+    const ThemePalette& pal = Pal(dk);
+    const Gdiplus::Color& cBgTint = pal.calendarTint;
+    const Gdiplus::Color& cRim    = pal.panelRim;
+    const Gdiplus::Color& cTitle  = pal.textPrimary;
+    const Gdiplus::Color& cWeek   = pal.textSecondary;
+    const Gdiplus::Color& cDay    = pal.textPrimary;
+    const Gdiplus::Color& cDim    = pal.textTertiary;
+    const Gdiplus::Color& cWeekend= pal.danger;
+    const Gdiplus::Color& cToday  = pal.danger;
 
     Gdiplus::SolidBrush brTitle(cTitle);
     Gdiplus::SolidBrush brWeek(cWeek);

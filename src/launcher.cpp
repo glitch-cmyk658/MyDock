@@ -2,6 +2,7 @@
 #include "launcher.h"
 #include "appaction.h"
 #include "util.h"
+#include "theme.h"
 
 #include <algorithm>
 #include <cmath>
@@ -680,11 +681,11 @@ void Launcher::Render() {
             g.DrawString(query_.c_str(), static_cast<INT>(query_.size()), &sf2,
                          Gdiplus::RectF(x0, area.Y, rq.Width, area.Height), &nearFmt, &txb);
         }
-        Gdiplus::SolidBrush cb(Gdiplus::Color(255, 25, 110, 200));   // 拼字用蓝色区分
+        Gdiplus::SolidBrush cb(Pal(false).accentBlue);   // 拼字用蓝色区分
         g.DrawString(compQuery_.c_str(), static_cast<INT>(compQuery_.size()), &sf2,
                      Gdiplus::RectF(x0 + rq.Width, area.Y, rc.Width, area.Height),
                      &nearFmt, &cb);
-        Gdiplus::Pen up(Gdiplus::Color(255, 25, 110, 200), 1.5f);
+        Gdiplus::Pen up(Pal(false).accentBlue, 1.5f);
         const float uy = area.Y + area.Height / 2.0f + static_cast<float>(Dpi(17)) * 0.62f;
         g.DrawLine(&up, x0 + rq.Width, uy, x0 + total, uy);
     }

@@ -6,6 +6,7 @@
 #include "ccenter.h"
 #include "svgicon.h"
 #include "util.h"
+#include "theme.h"
 
 #include <shellapi.h>
 #include <cstring>
@@ -18,19 +19,20 @@ const wchar_t* kClass = L"MyDockControlCenter";
 
 // macOS 系统色（浅色 #007AFF / 深色 #0A84FF；灰钮浅 #E9E9EB 深 #48484A）
 Gdiplus::Color KnobOn(bool dk) {
-    return dk ? Gdiplus::Color(255, 10, 132, 255) : Gdiplus::Color(255, 0, 122, 255);
+    return Pal(dk).accentBlue;
 }
 Gdiplus::Color KnobOff(bool dk) {
-    return dk ? Gdiplus::Color(255, 72, 72, 74) : Gdiplus::Color(255, 233, 233, 235);
+    // 关着的钮 = 深灰（深）/ 浅灰（浅），走分隔线色最接近
+    return Pal(dk).separator;
 }
 Gdiplus::Color KnobGlyph(bool dk, bool on) {
     // 打开的钮上图标是白的；关着的钮上图标本色（浅色下黑，深色下白）
-    return dk ? Gdiplus::Color(255, 242, 242, 247)
+    return dk ? Pal(dk).textPrimary
               : (on ? Gdiplus::Color(255, 255, 255, 255)
-                    : Gdiplus::Color(255, 29, 29, 31));
+                    : Pal(dk).textPrimary);
 }
 Gdiplus::Color TileBg(bool dk) {
-    return dk ? Gdiplus::Color(255, 44, 44, 46) : Gdiplus::Color(255, 255, 255, 255);
+    return Pal(dk).surfaceCard;
 }
 
 // Lucide 表里没有的几个符号，path 直接内嵌（Lucide ISC 许可）
@@ -224,10 +226,8 @@ void ControlCenter::DrawTile(Gdiplus::Graphics& g, int idx, const wchar_t* title
     }
 
     // 文字：标题 + 副标题
-    const Gdiplus::Color cT = dk ? Gdiplus::Color(255, 242, 242, 247)
-                                 : Gdiplus::Color(255, 29, 29, 31);
-    const Gdiplus::Color cS = dk ? Gdiplus::Color(255, 152, 152, 159)
-                                 : Gdiplus::Color(255, 120, 120, 128);
+    const Gdiplus::Color& cT = Pal(dk).textPrimary;
+    const Gdiplus::Color& cS = Pal(dk).textSecondary;
     Gdiplus::SolidBrush brT(cT);
     Gdiplus::SolidBrush brS(cS);
     Gdiplus::Font fT(L"Microsoft YaHei UI", Dpi(12),
@@ -258,15 +258,13 @@ void ControlCenter::DrawSlider(Gdiplus::Graphics& g, int idx, const char* lucide
     AddRoundRect(p, Gdiplus::RectF(static_cast<float>(s.x), static_cast<float>(s.y),
                                    static_cast<float>(s.w), static_cast<float>(s.h)),
                  static_cast<float>(Dpi(12)));
-    Gdiplus::SolidBrush bg(dk ? Gdiplus::Color(255, 44, 44, 46)
-                              : Gdiplus::Color(255, 255, 255, 255));
+    Gdiplus::SolidBrush bg(Pal(dk).surfaceCard);
     g.FillPath(&bg, &p);
 
     // 左侧图标
     SvgIcon ic;
     if (IconByName(lucideName, ic)) {
-        const Gdiplus::Color cIc = dk ? Gdiplus::Color(255, 220, 220, 226)
-                                      : Gdiplus::Color(255, 70, 70, 78);
+        const Gdiplus::Color& cIc = Pal(dk).iconOnTile;
         SvgDraw(g, ic, static_cast<float>(s.x + Dpi(26)),
                 static_cast<float>(s.y + s.h / 2),
                 static_cast<float>(Dpi(18)), 2.6f, cIc);
@@ -277,10 +275,8 @@ void ControlCenter::DrawSlider(Gdiplus::Graphics& g, int idx, const char* lucide
     const int tw = s.w - Dpi(46) - Dpi(16);
     const int cy = s.y + s.h / 2;
     const int barH = Dpi(5);
-    Gdiplus::SolidBrush track(dk ? Gdiplus::Color(255, 90, 90, 94)
-                                 : Gdiplus::Color(255, 226, 226, 230));
-    Gdiplus::SolidBrush fill(dk ? Gdiplus::Color(255, 242, 242, 247)
-                                : Gdiplus::Color(255, 90, 90, 96));
+    Gdiplus::SolidBrush track(Pal(dk).trackBg);
+    Gdiplus::SolidBrush fill(Pal(dk).sliderFill);
     Gdiplus::RectF rt(static_cast<float>(tx), static_cast<float>(cy - barH / 2),
                       static_cast<float>(tw), static_cast<float>(barH));
     g.FillRectangle(&track, rt);
@@ -318,12 +314,10 @@ void ControlCenter::Render() {
                  static_cast<float>(Dpi(14)));
     g.SetClip(&panel);
     if (backdrop_) g.DrawImage(backdrop_, 0, 0, w_, h_);
-    Gdiplus::SolidBrush tint(dark_ ? Gdiplus::Color(226, 24, 24, 27)
-                                   : Gdiplus::Color(238, 242, 242, 246));
+    Gdiplus::SolidBrush tint(Pal(dark_).panelTint);
     g.FillRectangle(&tint, 0, 0, w_, h_);
     g.ResetClip();
-    Gdiplus::Pen rim(dark_ ? Gdiplus::Color(40, 255, 255, 255)
-                           : Gdiplus::Color(26, 0, 0, 0), 1.0f);
+    Gdiplus::Pen rim(Pal(dark_).panelRim, 1.0f);
     g.DrawPath(&rim, &panel);
 
     // ---- 磁贴 ----
@@ -353,8 +347,7 @@ void ControlCenter::Render() {
         if (sys_.hasBattery) {
             swprintf(bat, 32, L"%d%%", sys_.pct);
         }
-        const Gdiplus::Color cT = dark_ ? Gdiplus::Color(255, 242, 242, 247)
-                                        : Gdiplus::Color(255, 29, 29, 31);
+        const Gdiplus::Color& cT = Pal(dark_).textPrimary;
         Gdiplus::SolidBrush br(cT);
         Gdiplus::Font f(L"Microsoft YaHei UI", Dpi(12),
                         Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);

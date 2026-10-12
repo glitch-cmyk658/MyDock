@@ -21,8 +21,12 @@
 
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+
+#include "util.h"   // ConfigDir（图标包目录）
 
 namespace mydock {
 namespace {
@@ -478,8 +482,43 @@ void SvgDraw(Gdiplus::Graphics& g, const SvgIcon& ic,
 
 // ---------------------------------------------------------------- 图标表
 
+// 图标包：优先读 %APPDATA%\MyDock\icons\<name>.svg —— 文件里每个
+// d="..." 都会被解析成一条子路径（Lucide SVG 直接拖进来就能用，fill 属性
+// 忽略 —— 上色由调用方的画刷决定）。没有对应文件就回落内建表。
+bool TryIconPack(const char* name, SvgIcon& out) {
+    const std::wstring dir = ConfigDir();
+    if (dir.empty()) return false;
+    const std::wstring path = dir + L"\\icons\\"
+        + std::wstring(name, name + std::strlen(name)) + L".svg";
+
+    FILE* f = nullptr;
+    if (_wfopen_s(&f, path.c_str(), L"rb") != 0 || !f) return false;
+    std::string text;
+    char raw[4096];
+    size_t n = 0;
+    while ((n = fread(raw, 1, sizeof(raw), f)) > 0) text.append(raw, n);
+    fclose(f);
+    if (text.empty()) return false;
+
+    // 抠出所有 d="..."（属性引号也支持单引号）
+    size_t pos = 0;
+    bool any = false;
+    while ((pos = text.find("d=\"", pos)) != std::string::npos ||
+           (pos = text.find("d='", pos)) != std::string::npos) {
+        const char q = text[pos + 2];
+        const size_t s = pos + 3;
+        const size_t e = text.find(q, s);
+        if (e == std::string::npos) break;
+        SvgParsePath(text.substr(s, e - s).c_str(), out);
+        any = true;
+        pos = e + 1;
+    }
+    return any;
+}
+
 bool LucideIcon(const char* name, SvgIcon& out) {
     out = SvgIcon();
+    if (TryIconPack(name, out)) return true;
 
     auto P = [&](const char* d) { SvgParsePath(d, out); };
     auto PF = [&](const char* d) {                 // 填实的

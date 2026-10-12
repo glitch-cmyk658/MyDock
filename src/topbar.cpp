@@ -3,6 +3,7 @@
 #include "svgicon.h"
 #include "flyout.h"   // 2026-10-11 - AI - 时钟点开的日历面板
 #include "util.h"
+#include "theme.h"
 
 #include <algorithm>
 #include <cmath>
@@ -370,7 +371,7 @@ void DrawStatusIcon(Gdiplus::Graphics& g, int id, float cx, float cy, float s,
                 SvgIcon lvl;
                 if (x1 - x0 > 1.0f && LucideIcon("battery-level", lvl)) {
                     Gdiplus::Color fc = IconInk(false, dark);
-                    if (st.pct <= 10) fc = Gdiplus::Color(236, 200, 58, 48);  // 低电量给个红
+                    if (st.pct <= 10) fc = Pal(dark > 0.5f).danger;  // 低电量给个红
                     const Gdiplus::GraphicsState gs = g.Save();
                     g.SetClip(Gdiplus::RectF(x0, y0, x1 - x0, y1 - y0));
                     SvgDraw(g, lvl, cx, cy, s, kIconStrokeIn24, fc, kBatterySx, 1.0f);

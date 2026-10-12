@@ -53,6 +53,17 @@
 > 首次运行若弹出 SmartScreen 警告（**Windows 已保护你的电脑**），点
 > **更多信息 → 仍要运行**——程序未购买代码签名证书，属正常现象，仅首次。
 
+## 主题与图标包
+
+配色集中在语义化调色板（19 个命名色 × 深浅两套）。复制仓库根目录的
+`theme.example.ini` 到 `%APPDATA%\MyDock\theme.ini`，改任意颜色（`AARRGGBB`）
+**保存即生效**——Dock 的轮询会自动发现文件变化，不用重启。没写的 key 落回
+内建默认，删掉 `theme.ini` 即回到原版。
+
+图标包：把 Lucide 风格的 SVG 放进 `%APPDATA%\MyDock\icons\`，按名字覆盖
+内置状态图标（如 `wifi.svg`、`battery.svg`、`volume-2.svg`、`search.svg`），
+文件里每个 `d="..."` 都会被解析，没有对应文件时回落内置图标。
+
 ## 测试
 
 纯逻辑函数（路径规范化、URI 解码、路径分段）有单元测试：

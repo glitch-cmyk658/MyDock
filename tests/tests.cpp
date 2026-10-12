@@ -10,6 +10,7 @@
 
 #include "../src/util.cpp"
 #include "../src/recents.cpp"
+#include "../src/theme.cpp"
 
 #include <cstdio>
 #include <io.h>
@@ -118,11 +119,60 @@ static void TestSplitPath() {
     CHECK_TRUE(e.empty(), "空路径切出空");
 }
 
+static void TestTheme() {
+    wprintf(L"-- ThemeLoadFromText --\n");
+    // 内建默认抽查（加载前）
+    {
+        ++g_total;
+        auto& c = mydock::Pal(false).textPrimary;
+        if (c.GetValue() != 0xFF1D1D1F) ++g_failed, wprintf(L"FAIL 默认 textPrimary\n");
+    }
+    {
+        ++g_total;
+        auto& c = mydock::Pal(true).accentBlue;
+        if (c.GetValue() != 0xFF0A84FF) ++g_failed, wprintf(L"FAIL 默认 accentBlue\n");
+    }
+
+    const std::wstring ini =
+        L"[light]\r\n"
+        L"accentBlue = #FF8800FF\r\n"
+        L"textPrimary = FF112233\r\n"
+        L"bogus = zzzz\r\n"          // 坏值忽略
+        L"[dark]\r\n"
+        L"danger = 0xFF00FF00\r\n";
+    ++g_total;
+    if (!mydock::ThemeLoadFromText(ini)) ++g_failed, wprintf(L"FAIL ini 加载\n");
+
+    {
+        ++g_total;
+        auto& c = mydock::Pal(false).accentBlue;
+        if (c.GetValue() != 0xFF8800FF) ++g_failed, wprintf(L"FAIL light accentBlue 覆盖\n");
+    }
+    {
+        ++g_total;
+        auto& c = mydock::Pal(false).textPrimary;
+        if (c.GetValue() != 0xFF112233) ++g_failed, wprintf(L"FAIL light textPrimary 覆盖\n");
+    }
+    {
+        ++g_total;
+        auto& c = mydock::Pal(true).danger;
+        if (c.GetValue() != 0xFF00FF00) ++g_failed, wprintf(L"FAIL dark danger 覆盖\n");
+    }
+    {
+        ++g_total;
+        auto& c = mydock::Pal(true).textPrimary;
+        if (c.GetValue() != 0xFFF2F2F7) ++g_failed, wprintf(L"FAIL 未覆盖 key 应保持默认\n");
+    }
+    // 恢复默认，别污染别的测试
+    mydock::ThemeLoadFromText(L"");
+}
+
 int main() {
     _setmode(0, 0x10000);  // _O_U16TEXT，让 wprintf 在控制台正常出中文
     TestNormalizePath();
     TestUriDecode();
     TestSplitPath();
+    TestTheme();
     wprintf(L"\n%d 项断言，%d 失败\n", g_total, g_failed);
     return g_failed == 0 ? 0 : 1;
 }
