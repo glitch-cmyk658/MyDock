@@ -9,3 +9,5 @@ build/
 Thumbs.db
 Desktop.ini
 *.mp4
+cppcheck.txt
+warnings.txt

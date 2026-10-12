@@ -16,7 +16,7 @@ rem
 rem   用 CMake 构建时不用操心：CMakeLists.txt 里的 add_executable(MyDock WIN32 ...)
 rem   就是同一件事。这条命令是手写的，所以必须自己带上。
 
-set SRC=src\main.cpp src\util.cpp src\apps.cpp src\dock.cpp src\launcher.cpp src\appaction.cpp src\recents.cpp src\menu.cpp src\topbar.cpp src\status.cpp src\svgicon.cpp
+set SRC=src\main.cpp src\util.cpp src\apps.cpp src\dock.cpp src\launcher.cpp src\appaction.cpp src\recents.cpp src\menu.cpp src\topbar.cpp src\status.cpp src\svgicon.cpp src\flyout.cpp src\ccenter.cpp
 rem -lversion: 读 exe 里的 FileDescription（Dock 运行区的显示名），2026-10-11 加
 set LIBS=-luser32 -lgdi32 -lgdiplus -lshell32 -lole32 -loleaut32 -lcomctl32 -lshlwapi -ldwmapi -luuid -lwinmm -limm32 -liphlpapi -lwlanapi -lbthprops -lversion
 

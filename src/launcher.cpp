@@ -875,7 +875,7 @@ void Launcher::LaunchIndex(int slot) {
         HWND found = FindProcessWindowAny(a.target, a.name);
         if (found) {
             // 与 appaction.cpp 共用同一套恢复激活序列（util::RestoreAndActivate）
-            RestoreAndActivate(found, a.name, a.target);
+            RestoreAndActivateAsync(found, a.name, a.target);
             Close();
             return;
         }

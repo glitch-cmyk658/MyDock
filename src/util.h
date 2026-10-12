@@ -132,6 +132,12 @@ HWND FindProcessWindowAny(const std::wstring& exePath,
 // exePath 用于判断是否微信/Weixin：只有它有「打开微信」热键可借
 bool RestoreAndActivate(HWND w, const std::wstring& name,
                         const std::wstring& exePath = L"");
+// 上面的后台线程版：立刻返回，恢复/激活序列（含最多 1.5s 的热键等待）
+// 全在 detached 线程里跑，Dock 消息循环一毫秒都不停。
+// 结果不再返回给调用方（两个调用方都不看返回值），成败只在日志里。
+// 线程安全依赖：Log 自带锁；线程里只碰目标窗口的句柄和 SendInput。
+void RestoreAndActivateAsync(HWND w, const std::wstring& name,
+                             const std::wstring& exePath = L"");
 
 // 这个 exe 有没有进程在跑（不管它有没有窗口）。
 // 用来兜住最后一种情况：进程还在、但一个窗口都找不到 ——

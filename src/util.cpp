@@ -892,6 +892,40 @@ bool RestoreAndActivate(HWND w, const std::wstring& name,
     return fg != FALSE;
 }
 
+// ------------------------------ 后台线程包装 ------------------------------
+namespace {
+struct WakeJob {
+    HWND w;
+    std::wstring name;
+    std::wstring exePath;
+};
+
+DWORD WINAPI WakeJobProc(void* p) {
+    WakeJob* job = static_cast<WakeJob*>(p);
+    // 窗口可能在排队期间被关掉 —— IsWindow 复查后再动手，
+    // ShowWindow/PostMessage 对死句柄虽然无害，但没必要白跑
+    if (IsWindow(job->w)) {
+        RestoreAndActivate(job->w, job->name, job->exePath);
+    }
+    delete job;
+    return 0;
+}
+}  // namespace
+
+void RestoreAndActivateAsync(HWND w, const std::wstring& name,
+                             const std::wstring& exePath) {
+    if (!w || !IsWindow(w)) return;
+    WakeJob* job = new WakeJob{w, name, exePath};
+    HANDLE t = CreateThread(nullptr, 0, WakeJobProc, job, 0, nullptr);
+    if (t) {
+        CloseHandle(t);   // detached：活着干完，进程退出时随进程收
+    } else {
+        Log(L"应用操作：起不来后台线程（%lu），退回同步恢复", GetLastError());
+        delete job;
+        RestoreAndActivate(w, name, exePath);
+    }
+}
+
 bool IsProcessRunning(const std::wstring& exePath) {
     if (exePath.empty()) return false;
     const std::wstring want = NormalizePath(exePath);

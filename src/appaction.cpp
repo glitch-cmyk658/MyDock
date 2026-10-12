@@ -170,7 +170,7 @@ AppOutcome RunAppAction(int cmd, const AppItem& app) {
                     //   ALT 豁免 + attach 前台线程 + SetActiveWindow/SetFocus。
                     //   以前缺 SetActiveWindow/SetFocus，微信窗口有前台名分
                     //   但内部还是 inactive —— 单击全被吞、双击反而有效。
-                    RestoreAndActivate(found, app.name, app.target);
+                    RestoreAndActivateAsync(found, app.name, app.target);
                     r.launched = true;
                     return r;
                 }
