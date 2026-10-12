@@ -926,7 +926,9 @@ struct WakeJob {
 //   g_logLock（UB），末尾的注入点击还可能落进别的应用。
 //   重入保护：同一时间只允许一个唤醒任务，进行中的新请求直接丢弃 ——
 //   第二次点击目标和第一次相同，重复执行没有意义。
-HANDLE g_wakeThread = nullptr;   // 非空 = 有任务在跑（忙标志）
+bool g_wakeBusy   = false;       // 忙标志：CreateThread 之前锁内置 true，worker 收尾清 ——
+                                 // 必须先于线程启动可见，否则 worker 跑得比 UI 置位还快时
+                                 // 标志被死句柄覆盖，唤醒功能无声卡死（2026-10-12 审查抓出）
 HANDLE g_wakeStop  = nullptr;    // 手动复位：请当前任务尽快收尾
 HANDLE g_wakeDone  = nullptr;    // 任务收尾时置位，StopWakeJob 等它
 std::mutex g_wakeMtx;
@@ -939,7 +941,7 @@ DWORD WINAPI WakeJobProc(void* p) {
     }
     {
         std::lock_guard<std::mutex> lk(g_wakeMtx);
-        g_wakeThread = nullptr;   // 腾出名额
+        g_wakeBusy = false;       // 腾出名额
     }
     SetEvent(g_wakeDone);
     delete job;
@@ -955,7 +957,7 @@ void RestoreAndActivateAsync(HWND w, const std::wstring& name,
 
     {
         std::lock_guard<std::mutex> lk(g_wakeMtx);
-        if (g_wakeThread) {
+        if (g_wakeBusy) {
             Log(L"应用操作：唤醒任务还在跑，本次请求忽略");
             return;
         }
@@ -966,20 +968,21 @@ void RestoreAndActivateAsync(HWND w, const std::wstring& name,
         if (!g_wakeStop || !g_wakeDone) return;
         ResetEvent(g_wakeStop);
         ResetEvent(g_wakeDone);
+        g_wakeBusy = true;      // ★ 忙标志在启动线程之前置位 —— 顺序反了的话，
+                                // worker 跑得比这行还快就会把标志清成空、
+                                // 再被死句柄覆盖，功能无声卡死
     }
 
     WakeJob* job = new WakeJob{w, name, exePath, g_wakeStop};
     HANDLE t = CreateThread(nullptr, 0, WakeJobProc, job, 0, nullptr);
     if (!t) {
         Log(L"应用操作：起不来后台线程（%lu），退回同步恢复", GetLastError());
+        { std::lock_guard<std::mutex> lk(g_wakeMtx); g_wakeBusy = false; }
         delete job;
         RestoreAndActivate(w, name, exePath, nullptr);
         return;
     }
-    {
-        std::lock_guard<std::mutex> lk(g_wakeMtx);
-        g_wakeThread = t;       // 忙标志；句柄由进程退出统一回收
-    }
+    // 句柄泄漏（每任务 24 字节，进程退出统一回收）；忙碌状态只由 g_wakeBusy 跟踪
 }
 
 // 退出收尾：喊停 + 等任务收完（等的是 done 事件，不是线程句柄 ——
@@ -987,7 +990,7 @@ void RestoreAndActivateAsync(HWND w, const std::wstring& name,
 void StopWakeJob() {
     {
         std::lock_guard<std::mutex> lk(g_wakeMtx);
-        if (!g_wakeThread) return;
+        if (!g_wakeBusy) return;
         if (g_wakeStop) SetEvent(g_wakeStop);
         if (!g_wakeDone) return;
     }
