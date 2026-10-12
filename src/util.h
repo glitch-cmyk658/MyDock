@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <gdiplus.h>
 #include <string>
+#include <vector>
 
 namespace mydock {
 
@@ -148,6 +149,18 @@ void StopWakeJob();
 // 用来兜住最后一种情况：进程还在、但一个窗口都找不到 ——
 // 这时候再启动一次同样会让微信重新登录，宁可什么都不做。
 bool IsProcessRunning(const std::wstring& exePath);
+
+// 托盘应用清单（2026-10-12）。
+// 数据源：HKCU\Control Panel\NotifyIconSettings —— Win11 系统记录每个
+// 托盘图标的登记处（ExecutablePath + InitialTooltip），不依赖任务栏可见。
+// 过滤：只留**正在运行**的（注册表里积了大量历史残留）、去重、排除
+// MyDock 自己；名字 = 托盘悬停名 → exe FileDescription → 文件名。
+// 按名字排序。点击后的「激活或拉起」由调用方做（topbar）。
+struct TrayApp {
+    std::wstring exePath;
+    std::wstring name;
+};
+std::vector<TrayApp> EnumRunningTrayApps();
 
 // 2026-10-11 - AI - 开机自启（HKCU Run 键）与「重启自己」
 // 托盘菜单和顶栏 ⏏ 菜单共用，所以放公共区。

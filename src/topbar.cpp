@@ -52,6 +52,7 @@ const int kStShowDock = 154;   // 唤出 Dock（顶栏 ⏏ 菜单）
 const int kStAutoStart = 155;  // 开机自启开关（勾选态）
 const int kStRestartDock = 156; // 重启 MyDock
 const int kStDiskMgmt = 157;   // 磁盘管理
+const int kStTrayBase = 400;   // 托盘应用菜单项（基址 + 序号）
 const int kStWifiBase = 200;   // 200..249
 const int kStBtBase   = 300;   // 300..349
 
@@ -951,21 +952,35 @@ void TopBar::ShowIconMenu(int id) {
             line(kStProject,  L"投影（Win+P）");
             break;
 
-        case kIcEject:
-            // 2026-10-11 - AI - 这个图标的职责升级为「托盘」。
-            //   用户根本不用 Windows 任务栏（MyDock 取代了它），
-            //   Shell_NotifyIcon 那个托盘图标等于看不见 —— MyDock 的
-            //   自启/重启/退出就该挂在顶栏右上角。原驱动器两项保留。
-            head(L"MyDock", L"");
+        case kIcEject: {
+            // 2026-10-12 - AI - 正式成为「托盘」：列出 Windows 托盘里在跑的
+            // 应用（输入法、GHelper 这类平常看不见的）。数据源是注册表
+            // NotifyIconSettings —— 系统自己的托盘登记处，不依赖任务栏可见
+            // （这台机器的任务栏被整体挪到屏幕外了，UIA 走不通）。
+            // 点击行为：有窗口就激活（复用微信唤醒那套），没有就拉起 exe。
+            // 原来的 MyDock 系统项全部移去左上角圆圈菜单（ShowSystemMenu）。
+            head(L"托盘", L"");
             sep();
-            line(kStShowDock, L"显示 Dock");
-            line(kStAutoStart, L"开机自启", IsAutoStart());
-            line(kStRestartDock, L"重启 MyDock");
-            line(kCmdQuit, L"退出 MyDock");
-            sep();
-            line(kStComputer, L"打开此电脑");
-            line(kStDiskMgmt, L"磁盘管理");
+            trayExe_.clear();
+            const std::vector<TrayApp> apps = EnumRunningTrayApps();
+            int n = 0;
+            for (const TrayApp& t : apps) {
+                if (n >= 18) {   // 菜单高度保护：超过 18 项截断并记日志
+                    Log(L"托盘：%zu 个在跑，只显示前 18 个", apps.size());
+                    break;
+                }
+                line(kStTrayBase + n, t.name);
+                trayExe_.push_back(t.exePath);
+                ++n;
+            }
+            if (n == 0) {
+                MenuItem idle;
+                idle.cmd = 0;              // 点了没反应（cmd 0 = 取消语义）
+                idle.label = L"（没有在运行的托盘应用）";
+                items.push_back(std::move(idle));
+            }
             break;
+        }
 
         case kIcSearch:
             // ★ 这两个**不弹菜单**：macOS 上点 Spotlight 是直接开搜索框、
@@ -1017,6 +1032,23 @@ void TopBar::RunIconMenuCommand(int id, int cmd) {
                 static_cast<int>(reinterpret_cast<INT_PTR>(r)));
         }
     };
+
+    // ---- 点了某个托盘应用 ----
+    // 有窗口 → 走微信唤醒那套（后台线程恢复+激活）；没窗口 → 拉起 exe，
+    // 纯托盘应用（输入法这类）由它自己的单实例逻辑亮出界面。
+    if (cmd >= kStTrayBase) {
+        const size_t i = static_cast<size_t>(cmd - kStTrayBase);
+        if (i >= trayExe_.size()) return;
+        const std::wstring exe = trayExe_[i];
+        const HWND w = FindProcessWindowAny(exe);
+        if (w) {
+            RestoreAndActivateAsync(w, exe, exe);
+            return;
+        }
+        Log(L"托盘：%ls 没有可见窗口，直接拉起 exe", exe.c_str());
+        ShellExecuteW(nullptr, L"open", exe.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        return;
+    }
 
     // ---- 点了某个 Wi-Fi 网络 ----
     if (cmd >= kStWifiBase && cmd < kStBtBase) {
@@ -1625,6 +1657,15 @@ void TopBar::ShowSystemMenu() {
     items.push_back({kCmdTaskMgr,  L"任务管理器"});
     items.push_back({kCmdWorkshop, L"创意工坊"});
     items.push_back({0, L"", true, false});
+    // 2026-10-12 - AI - 从 ⏏ 菜单搬来的 MyDock 专属组 + 原驱动器两项：
+    //   ⏏ 正式改作托盘（列出 Windows 托盘里在跑的应用），系统项归位圆圈菜单。
+    items.push_back({kStShowDock,    L"显示 Dock"});
+    items.push_back({kStAutoStart,   L"开机自启", false, IsAutoStart()});
+    items.push_back({kStRestartDock, L"重启 MyDock"});
+    items.push_back({0, L"", true, false});
+    items.push_back({kStComputer,    L"打开此电脑"});
+    items.push_back({kStDiskMgmt,    L"磁盘管理"});
+    items.push_back({0, L"", true, false});
     items.push_back({kCmdSleep,    L"睡眠"});
     items.push_back({kCmdRestart,  L"重启"});
     items.push_back({kCmdShutdown, L"关机"});
@@ -1654,6 +1695,26 @@ void TopBar::RunCommand(int cmd) {
     };
 
     switch (cmd) {
+        case kStShowDock: {
+            // Dock 窗口类名固定，投一条「显示」过去 —— 可见性/动画归它自己管
+            const HWND dock = FindWindowW(L"MyDockWindowClass", nullptr);
+            if (dock) PostMessageW(dock, WM_APP + 45, 0, 0);
+            break;
+        }
+        case kStAutoStart:
+            SetAutoStart(!IsAutoStart());
+            break;
+        case kStRestartDock:
+            // 1 秒后由系统拉起新进程（等互斥体释放），顶栏和 Dock 各自退场
+            QueueRestart();
+            DestroyWindow(hwnd_);
+            {
+                const HWND dock = FindWindowW(L"MyDockWindowClass", nullptr);
+                if (dock) PostMessageW(dock, WM_CLOSE, 0, 0);
+            }
+            break;
+        case kStComputer: open(L"shell:MyComputerFolder"); break;
+        case kStDiskMgmt: open(L"diskmgmt.msc"); break;
         case kCmdAbout:
             open(L"winver.exe");
             break;

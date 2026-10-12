@@ -4,6 +4,7 @@
 #include <shlobj.h>
 #include <tlhelp32.h>   // 2026-10-11 - AI - CreateToolhelp32Snapshot：按 exe 路径查进程在不在
 #include <algorithm>
+#include <set>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
@@ -998,6 +999,96 @@ void StopWakeJob() {
     // 任务自己活到结束 —— main.cpp 在 StopWakeJob 返回后才退出 RunApp，
     // 静态析构仍在它后面。
     WaitForSingleObject(g_wakeDone, 3000);
+}
+
+// FileDescription → 文件名，托盘菜单的显示名兜底（与 dock.cpp 的 PrettyName 同逻辑）
+static std::wstring TrayPrettyName(const std::wstring& exePath) {
+    DWORD dummy = 0;
+    const DWORD sz = GetFileVersionInfoSizeW(exePath.c_str(), &dummy);
+    if (sz > 0) {
+        std::vector<BYTE> buf(static_cast<size_t>(sz));
+        if (GetFileVersionInfoW(exePath.c_str(), 0, sz, buf.data())) {
+            struct LangCp { WORD lang; WORD cp; };
+            LangCp* trans = nullptr;
+            UINT tlen = 0;
+            if (VerQueryValueW(buf.data(), L"\\VarFileInfo\\Translation",
+                               reinterpret_cast<void**>(&trans), &tlen) &&
+                trans && tlen >= sizeof(LangCp)) {
+                wchar_t key[64] = {};
+                swprintf_s(key, L"\\StringFileInfo\\%04x%04x\\FileDescription",
+                           trans[0].lang, trans[0].cp);
+                wchar_t* val = nullptr;
+                UINT vlen = 0;
+                if (VerQueryValueW(buf.data(), key,
+                                   reinterpret_cast<void**>(&val), &vlen) &&
+                    val && vlen > 1 && val[0]) {
+                    return val;
+                }
+            }
+        }
+    }
+    const size_t slash = exePath.find_last_of(L"\\/");
+    std::wstring stem = slash == std::wstring::npos
+                            ? exePath : exePath.substr(slash + 1);
+    if (stem.size() > 4 && stem.rfind(L".exe") == stem.size() - 4)
+        stem.erase(stem.size() - 4);
+    return stem;
+}
+
+std::vector<TrayApp> EnumRunningTrayApps() {
+    std::vector<TrayApp> out;
+    std::set<std::wstring> dedupe;
+
+    wchar_t self[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    const std::wstring selfLow = NormalizePath(self);
+
+    HKEY k = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER,
+                      L"Control Panel\\NotifyIconSettings",
+                      0, KEY_READ, &k) != ERROR_SUCCESS) return out;
+
+    DWORD maxSub = 0, count = 0;
+    RegQueryInfoKeyW(k, nullptr, nullptr, nullptr, &count, &maxSub, nullptr,
+                     nullptr, nullptr, nullptr, nullptr, nullptr);
+    std::vector<wchar_t> sub(maxSub + 2, 0);
+
+    for (DWORD i = 0; i < count; ++i) {
+        DWORD len = maxSub + 1;
+        if (RegEnumKeyExW(k, i, sub.data(), &len, nullptr, nullptr,
+                          nullptr, nullptr) != ERROR_SUCCESS) continue;
+        HKEY sk = nullptr;
+        if (RegOpenKeyExW(k, sub.data(), 0, KEY_READ, &sk) != ERROR_SUCCESS) continue;
+
+        wchar_t exe[MAX_PATH * 2] = {};
+        DWORD exeSz = sizeof(exe);
+        wchar_t tip[256] = {};
+        DWORD tipSz = sizeof(tip);
+        RegGetValueW(sk, nullptr, L"ExecutablePath", RRF_RT_REG_SZ,
+                     nullptr, exe, &exeSz);
+        RegGetValueW(sk, nullptr, L"InitialTooltip", RRF_RT_REG_SZ,
+                     nullptr, tip, &tipSz);
+        RegCloseKey(sk);
+
+        if (!exe[0]) continue;
+        const std::wstring low = NormalizePath(exe);
+        if (low == selfLow) continue;              // 自己的托盘图标不进菜单
+        if (!dedupe.insert(low).second) continue;  // 同一 exe 多条登记只留一条
+        if (!IsProcessRunning(exe)) continue;      // 没在跑的是历史残留
+
+        std::wstring name = tip;
+        while (!name.empty() && (name.back() == L' ' || name.back() == L'\t'))
+            name.pop_back();
+        if (name.empty()) name = TrayPrettyName(exe);
+        out.push_back({exe, name});
+    }
+    RegCloseKey(k);
+
+    std::sort(out.begin(), out.end(),
+              [](const TrayApp& a, const TrayApp& b) {
+                  return _wcsicmp(a.name.c_str(), b.name.c_str()) < 0;
+              });
+    return out;
 }
 
 bool IsProcessRunning(const std::wstring& exePath) {
