@@ -1,0 +1,56 @@
+# 2026-10-13 - AI - CI：每次 push/PR 在 Windows 上构建并跑纯逻辑单测
+#
+# tests.cmd 的注释里躺了很久的「so it can hook into CI later」——现在兑现。
+# 构建命令与 build.cmd 保持一致（两条构建线的教训见 DEVLOG），
+# 区别只是 CI 上用 msys2 的工具链而不是本机 mingw64 目录。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-binutils
+            mingw-w64-x86_64-filesystem
+
+      - name: build MyDock.exe
+        shell: msys2 {0}
+        run: |
+          windres mydock.rc -O coff -o mydock_res.o
+          g++ -std=c++17 -O2 -municode -static -mwindows \
+              -DUNICODE -D_UNICODE -DNOMINMAX -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 \
+              src/main.cpp src/util.cpp src/theme.cpp src/trayuia.cpp src/apps.cpp \
+              src/dock.cpp src/dock_menu.cpp src/launcher.cpp src/appaction.cpp \
+              src/recents.cpp src/menu.cpp src/topbar.cpp src/status.cpp \
+              src/svgicon.cpp src/flyout.cpp src/ccenter.cpp mydock_res.o \
+              -o MyDock.exe \
+              -luser32 -lgdi32 -lgdiplus -lshell32 -lole32 -loleaut32 -lcomctl32 \
+              -lshlwapi -ldwmapi -luuid -lwinmm -limm32 -liphlpapi -lwlanapi \
+              -lbthprops -lversion -ladvapi32
+          test -f MyDock.exe
+
+      - name: unit tests
+        shell: msys2 {0}
+        run: |
+          g++ -std=c++17 -O1 -static -DUNICODE -D_UNICODE -DNOMINMAX \
+              -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -Isrc \
+              tests/tests.cpp src/util.cpp src/theme.cpp src/recents.cpp \
+              -o tests.exe \
+              -lgdiplus -lshell32 -lole32 -luuid -lshlwapi -ladvapi32 \
+              -luser32 -lgdi32 -lversion
+          ./tests.exe

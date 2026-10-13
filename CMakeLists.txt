@@ -10,6 +10,7 @@ add_executable(MyDock WIN32
     src/util.cpp
     src/apps.cpp
     src/dock.cpp
+    src/dock_menu.cpp
     src/launcher.cpp
     src/appaction.cpp
     src/recents.cpp

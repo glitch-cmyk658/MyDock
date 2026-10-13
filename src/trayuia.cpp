@@ -204,14 +204,33 @@ bool NameMatch(const std::wstring& buttonName, const std::wstring& want) {
     return _wcsnicmp(fl.c_str(), want.c_str(), want.size()) == 0;
 }
 
-// 把 UIA 按钮名剥掉「已固定」「- N 个运行窗口」这类任务栏按钮修饰，
-// 不然搜托盘图标时会撞上同名任务栏按钮
-std::wstring StripTaskbarDecor(const std::wstring& n) {
-    std::wstring s = n;
-    for (const wchar_t* deco : {L" 已固定", L" - 1 个运行窗口"}) {
-        size_t p;
-        while ((p = s.find(deco)) != std::wstring::npos) s.erase(p, wcslen(deco));
+// 把 UIA 按钮名剥掉任务栏按钮的修饰尾巴 ——「已固定」「- N 个运行窗口」
+//（中文系统）/「pinned」「- N running windows」（英文系统）。
+// 不然搜托盘图标时会撞上同名任务栏应用按钮。
+std::wstring StripTaskbarDecor(std::wstring s) {
+    // 数字个数没法枚举，用「尾巴模式」逐个试
+    auto cutSuffix = [&s](const wchar_t* tail) {
+        const size_t len = wcslen(tail);
+        if (s.size() >= len &&
+            _wcsicmp(s.c_str() + s.size() - len, tail) == 0)
+            s.erase(s.size() - len);
+    };
+    for (int guard = 0; guard < 8; ++guard) {   // 防御：最多剥 8 层
+        const size_t before = s.size();
+        cutSuffix(L" 已固定");
+        cutSuffix(L" pinned");
+        cutSuffix(L" Pinned");
+        // 「- N 个运行窗口 / - N running window(s)」：从「 - 数字」处截断
+        const size_t dash = s.rfind(L" - ");
+        if (dash != std::wstring::npos) {
+            const std::wstring tail = s.substr(dash + 3);
+            // 尾巴以数字开头才认为是运行窗口计数
+            if (!tail.empty() && tail[0] >= L'0' && tail[0] <= L'9')
+                s.erase(dash);
+        }
+        if (s.size() == before) break;
     }
+    while (!s.empty() && (s.back() == L' ' || s.back() == L'\t')) s.pop_back();
     return s;
 }
 
@@ -233,14 +252,28 @@ void TrayInvalidateCache() {
 
 // ---- 真实点击：任务栏亮在真实位置 → 开溢出岛 → 定位按钮 → SendInput ----
 
-// 找 chevron（「显示隐藏的图标」）并 Invoke，返回是否找到
+// chevron 的名字随系统语言变：中文「显示隐藏的图标」、英文
+//「Show hidden icons」。按名单匹配，加一种语言就多一行。
+const wchar_t* kChevronNames[] = {
+    L"显示隐藏的图标",
+    L"Show hidden icons",
+    L"Show Hidden Icons",
+};
+
+bool IsChevronName(const std::wstring& n) {
+    for (const wchar_t* c : kChevronNames)
+        if (_wcsicmp(n.c_str(), c) == 0) return true;
+    return false;
+}
+
+// 找 chevron 并 Invoke，返回是否找到
 bool InvokeChevron(IUIAutomation* uia, IUIAutomationElement* bridgeEl) {
     std::vector<std::pair<std::wstring, RECT>> btns;
     std::vector<IUIAutomationElement*> keep;
     CollectButtons(uia, bridgeEl, btns, &keep);
     bool ok = false;
     for (size_t i = 0; i < btns.size(); ++i) {
-        if (btns[i].first == L"显示隐藏的图标") {
+        if (IsChevronName(btns[i].first)) {
             IUnknown* unk = nullptr;
             if (SUCCEEDED(keep[i]->GetCurrentPattern(UIA_InvokePatternId, &unk)) && unk) {
                 IUIAutomationInvokePattern* inv = nullptr;
