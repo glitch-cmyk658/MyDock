@@ -1092,8 +1092,8 @@ void TopBar::ShowIconMenu(int id) {
             // 本次先提示，下次点开就是新清单
             int n = 0;
             for (const TrayEntry& t : TrayCachedEntries()) {
-                if (n >= 10) {   // 长度限制：用户点名要的
-                    Log(L"托盘：%zu 项在跑，只显示前 10 个", TrayCachedEntries().size());
+                if (n >= 12) {   // 长度限制：用户点名要的（12 行正好，哔哩哔哩也能进）
+                    Log(L"托盘：%zu 项在跑，只显示前 12 个", TrayCachedEntries().size());
                     break;
                 }
                 // 展示名截断 —— NVIDIA 那种全名能把菜单撑到一半屏幕宽
@@ -1112,13 +1112,10 @@ void TopBar::ShowIconMenu(int id) {
                 ++n;
             }
             if (trayNames_.empty()) {
-                TrayRefreshAsync();
                 MenuItem idle;
                 idle.cmd = 0;              // 点了没反应（cmd 0 = 取消语义）
-                idle.label = L"（托盘列表整理中，稍后再点一次）";
+                idle.label = L"（没有在运行的托盘应用）";
                 items.push_back(std::move(idle));
-            } else if (TrayCacheAgeMs() > 90 * 1000) {
-                TrayRefreshAsync();        // 过期就在后台刷新，供下次使用
             }
             break;
         }
@@ -1214,7 +1211,7 @@ void TopBar::RunIconMenuCommand(int id, int cmd) {
     if (cmd >= kStTrayBase) {
         const size_t i = static_cast<size_t>(cmd - kStTrayBase);
         if (i >= trayNames_.size()) return;
-        TrayInvokeByNameAsync(trayNames_[i]);
+        TrayClickByNameAsync(trayNames_[i]);
         return;
     }
 

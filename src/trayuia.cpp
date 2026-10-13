@@ -1,48 +1,111 @@
-// 2026-10-12 - AI - 托盘溢出区 UIA 方案实现（见 trayuia.h 头注）
+// 2026-10-13 - AI - 托盘溢出区 UIA 方案实现（见 trayuia.h 头注）
 #include "trayuia.h"
 
-#include "util.h"   // ScheduleBackground / Log / ConfigDir
+#include "util.h"   // ScheduleBackground / Log / NormalizePath
 
 #include <uiautomationclient.h>
+#include <algorithm>
 #include <mutex>
+#include <set>
+#include <tlhelp32.h>
 #include <utility>
 
 namespace mydock {
 namespace {
 
-// ---- 缓存（菜单打开时直接用，后台线程负责刷新） ----
-std::mutex g_cacheMtx;
-std::vector<TrayEntry> g_cache;
-bool g_cacheValid = false;
-unsigned long long g_cacheAt = 0;
+// ---- 注册表登记处（菜单数据源） ----
+std::mutex g_regMtx;
+std::vector<TrayEntry> g_regCache;
+bool g_regValid = false;
 
-// UIA 元素 → 所属进程的 exe 路径（图标提取用）。拿不到返回空。
-std::wstring ExeOfElement(IUIAutomationElement* el) {
-    DWORD pid0 = 0;
-    int ipid = 0;
-    if (FAILED(el->get_CurrentProcessId(&ipid)) || !ipid) return L"";
-    DWORD pid = static_cast<DWORD>(ipid);
-    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!p) return L"";
-    wchar_t buf[MAX_PATH * 2] = {};
-    DWORD sz = MAX_PATH * 2;
-    std::wstring out;
-    if (QueryFullProcessImageNameW(p, 0, buf, &sz)) out = buf;
-    CloseHandle(p);
+std::wstring ExeStem(std::wstring p) {
+    const size_t slash = p.find_last_of(L"\\/");
+    if (slash != std::wstring::npos) p = p.substr(slash + 1);
+    if (p.size() > 4 && _wcsicmp(p.c_str() + p.size() - 4, L".exe") == 0)
+        p.erase(p.size() - 4);
+    return p;
+}
+
+// 注册表 NotifyIconSettings → 在跑的托盘应用（一次进程快照过滤全部）
+std::vector<TrayEntry> EnumRegTrays() {
+    std::vector<TrayEntry> out;
+    std::set<std::wstring> dedupe;
+
+    // ① 一次快照拿全部在跑进程的 exe 路径（别每个托盘项查一次 ——
+    //    上版就是 56 次快照把菜单拖慢的）
+    std::set<std::wstring> running;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32W pe = {};
+        pe.dwSize = sizeof(pe);
+        if (Process32FirstW(snap, &pe)) {
+            do {
+                HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+                                       FALSE, pe.th32ProcessID);
+                if (!p) continue;
+                wchar_t buf[MAX_PATH] = {};
+                DWORD sz = MAX_PATH;
+                if (QueryFullProcessImageNameW(p, 0, buf, &sz))
+                    running.insert(NormalizePath(buf));
+                CloseHandle(p);
+            } while (Process32NextW(snap, &pe));
+        }
+        CloseHandle(snap);
+    }
+
+    wchar_t self[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    const std::wstring selfLow = NormalizePath(self);
+
+    HKEY k = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER,
+                      L"Control Panel\\NotifyIconSettings",
+                      0, KEY_READ, &k) != ERROR_SUCCESS) return out;
+
+    DWORD maxSub = 0, count = 0;
+    RegQueryInfoKeyW(k, nullptr, nullptr, nullptr, &count, &maxSub, nullptr,
+                     nullptr, nullptr, nullptr, nullptr, nullptr);
+    std::vector<wchar_t> sub(maxSub + 2, 0);
+
+    for (DWORD i = 0; i < count; ++i) {
+        DWORD len = maxSub + 1;
+        if (RegEnumKeyExW(k, i, sub.data(), &len, nullptr, nullptr,
+                          nullptr, nullptr) != ERROR_SUCCESS) continue;
+        HKEY sk = nullptr;
+        if (RegOpenKeyExW(k, sub.data(), 0, KEY_READ, &sk) != ERROR_SUCCESS) continue;
+
+        wchar_t exe[MAX_PATH * 2] = {};
+        DWORD exeSz = sizeof(exe);
+        wchar_t tip[256] = {};
+        DWORD tipSz = sizeof(tip);
+        RegGetValueW(sk, nullptr, L"ExecutablePath", RRF_RT_REG_SZ,
+                     nullptr, exe, &exeSz);
+        RegGetValueW(sk, nullptr, L"InitialTooltip", RRF_RT_REG_SZ,
+                     nullptr, tip, &tipSz);
+        RegCloseKey(sk);
+
+        if (!exe[0]) continue;
+        const std::wstring low = NormalizePath(exe);
+        if (low == selfLow) continue;              // 自己的托盘图标不进菜单
+        if (running.count(low) == 0) continue;     // 没在跑的是历史残留
+        if (!dedupe.insert(low).second) continue;  // 同一 exe 多条登记只留一条
+
+        std::wstring name = tip;
+        while (!name.empty() && (name.back() == L' ' || name.back() == L'\t'))
+            name.pop_back();
+        if (name.empty()) name = ExeStem(exe);
+        out.push_back({name, exe});
+    }
+    RegCloseKey(k);
+
+    std::sort(out.begin(), out.end(),
+              [](const TrayEntry& a, const TrayEntry& b) {
+                  return _wcsicmp(a.name.c_str(), b.name.c_str()) < 0;
+              });
     return out;
 }
 
-std::wstring FirstLine(const std::wstring& s) {
-    const size_t p = s.find(L'\n');
-    std::wstring r = (p == std::wstring::npos) ? s : s.substr(0, p);
-    while (!r.empty() && (r.back() == L'\r' || r.back() == L' ')) r.pop_back();
-    return r;
-}
-
-std::wstring FirstToken(const std::wstring& s) {
-    const size_t p = s.find_first_of(L" \t\n");
-    return (p == std::wstring::npos) ? s : s.substr(0, p);
-}
+// ---- UIA（点击瞬间定位按钮矩形用） ----
 
 HWND FindBridgeChild(HWND tray) {
     HWND hh = nullptr;
@@ -56,9 +119,7 @@ HWND FindBridgeChild(HWND tray) {
     }
 }
 
-// UIA 会话：RAII 管 COM 初始化与对象释放。
-// ★ COM 规矩（与 main.cpp 同一条）：SUCCEEDED（含 S_FALSE）都 +1 计数，
-//   都要配对 CoUninitialize。
+// UIA 会话：RAII 管 COM 初始化与对象释放（SUCCEEDED 全要配对 CoUninit）
 struct Uia {
     IUIAutomation* uia = nullptr;
     bool comSucceeded = false;
@@ -78,9 +139,22 @@ struct Uia {
     }
 };
 
-// 枚举一棵元素树里的全部按钮（保留原始多行名；元素引用转交调用方释放）
+std::wstring FirstLine(const std::wstring& s) {
+    const size_t p = s.find(L'\n');
+    std::wstring r = (p == std::wstring::npos) ? s : s.substr(0, p);
+    while (!r.empty() && (r.back() == L'\r' || r.back() == L' ')) r.pop_back();
+    return r;
+}
+
+std::wstring FirstToken(const std::wstring& s) {
+    const size_t p = s.find_first_of(L" \t\n");
+    return (p == std::wstring::npos) ? s : s.substr(0, p);
+}
+
+// 收一棵元素树里的按钮：{第一行名, 矩形, 元素引用转交调用方}
 size_t CollectButtons(IUIAutomation* uia, IUIAutomationElement* root,
-                      std::vector<std::pair<std::wstring, IUIAutomationElement*>>& out) {
+                      std::vector<std::pair<std::wstring, RECT>>& out,
+                      std::vector<IUIAutomationElement*>* keep) {
     IUIAutomationCondition* cond = nullptr;
     if (FAILED(uia->CreateTrueCondition(&cond))) return 0;
     IUIAutomationElementArray* arr = nullptr;
@@ -98,11 +172,20 @@ size_t CollectButtons(IUIAutomation* uia, IUIAutomationElement* root,
         if (SUCCEEDED(el->get_CurrentControlType(&ct)) &&
             ct == UIA_ButtonControlTypeId) {
             BSTR name = nullptr;
+            RECT rc = {};
             if (SUCCEEDED(el->get_CurrentName(&name)) && name) {
-                out.push_back({name, el});   // el 引用转交调用方
+                const bool okRect =
+                    SUCCEEDED(el->get_CurrentBoundingRectangle(&rc));
+                if (okRect) {
+                    std::wstring wname = name;
+                    out.push_back({FirstLine(wname), rc});
+                    if (keep) keep->push_back(el);
+                    else el->Release();
+                    SysFreeString(name);
+                    ++cnt;
+                    continue;
+                }
                 SysFreeString(name);
-                ++cnt;
-                continue;
             }
             if (name) SysFreeString(name);
         }
@@ -112,172 +195,152 @@ size_t CollectButtons(IUIAutomation* uia, IUIAutomationElement* root,
     return cnt;
 }
 
-bool InvokeEl(IUIAutomationElement* el) {
-    IUnknown* unk = nullptr;
-    if (FAILED(el->GetCurrentPattern(UIA_InvokePatternId, &unk)) || !unk) return false;
-    IUIAutomationInvokePattern* inv = nullptr;
-    const HRESULT hr = unk->QueryInterface(__uuidof(IUIAutomationInvokePattern),
-                                           reinterpret_cast<void**>(&inv));
-    unk->Release();
-    if (FAILED(hr) || !inv) return false;
-    inv->Invoke();
-    inv->Release();
-    return true;
+// 名字匹配：首行精确 / 首 token / tooltip 前缀（G-Helper 温度会漂）
+bool NameMatch(const std::wstring& buttonName, const std::wstring& want) {
+    const std::wstring fl = FirstLine(buttonName);
+    if (_wcsicmp(fl.c_str(), want.c_str()) == 0) return true;
+    if (_wcsicmp(FirstToken(fl).c_str(), FirstToken(want).c_str()) == 0)
+        return true;
+    return _wcsnicmp(fl.c_str(), want.c_str(), want.size()) == 0;
+}
+
+// 把 UIA 按钮名剥掉「已固定」「- N 个运行窗口」这类任务栏按钮修饰，
+// 不然搜托盘图标时会撞上同名任务栏按钮
+std::wstring StripTaskbarDecor(const std::wstring& n) {
+    std::wstring s = n;
+    for (const wchar_t* deco : {L" 已固定", L" - 1 个运行窗口"}) {
+        size_t p;
+        while ((p = s.find(deco)) != std::wstring::npos) s.erase(p, wcslen(deco));
+    }
+    return s;
 }
 
 }  // namespace
 
-// 完整舞步：names 非空 → 枚举溢出区；invokeName 非空 → 按名触发。
-// stop 有信号时在各个等待点尽快撤退（先恢复任务栏原位再返回）。
-static bool TrayDance(std::vector<TrayEntry>* entries,
-                      const std::wstring* invokeName,
-                      const std::wstring* invokePrefix, HANDLE stop) {
-    auto snooze = [&](DWORD ms) {
-        return stop && WaitForSingleObject(stop, ms) == WAIT_OBJECT_0;
-    };
+std::vector<TrayEntry> TrayCachedEntries() {
+    std::lock_guard<std::mutex> lk(g_regMtx);
+    if (!g_regValid) {
+        g_regCache = EnumRegTrays();
+        g_regValid = true;
+    }
+    return g_regCache;
+}
 
+void TrayInvalidateCache() {
+    std::lock_guard<std::mutex> lk(g_regMtx);
+    g_regValid = false;
+}
+
+// ---- 真实点击：任务栏亮在真实位置 → 开溢出岛 → 定位按钮 → SendInput ----
+
+// 找 chevron（「显示隐藏的图标」）并 Invoke，返回是否找到
+bool InvokeChevron(IUIAutomation* uia, IUIAutomationElement* bridgeEl) {
+    std::vector<std::pair<std::wstring, RECT>> btns;
+    std::vector<IUIAutomationElement*> keep;
+    CollectButtons(uia, bridgeEl, btns, &keep);
+    bool ok = false;
+    for (size_t i = 0; i < btns.size(); ++i) {
+        if (btns[i].first == L"显示隐藏的图标") {
+            IUnknown* unk = nullptr;
+            if (SUCCEEDED(keep[i]->GetCurrentPattern(UIA_InvokePatternId, &unk)) && unk) {
+                IUIAutomationInvokePattern* inv = nullptr;
+                if (SUCCEEDED(unk->QueryInterface(__uuidof(IUIAutomationInvokePattern),
+                                                  reinterpret_cast<void**>(&inv)))) {
+                    inv->Invoke();
+                    inv->Release();
+                    ok = true;
+                }
+                unk->Release();
+            }
+            break;
+        }
+    }
+    for (auto* e : keep) e->Release();
+    return ok;
+}
+
+// 在按钮列表里找名字匹配的那颗，返回它的屏幕矩形（找不到返回空 RECT）
+RECT FindButtonRect(const std::vector<std::pair<std::wstring, RECT>>& btns,
+                    const std::wstring& want) {
+    for (const auto& b : btns) {
+        if (NameMatch(StripTaskbarDecor(b.first), want)) return b.second;
+    }
+    return RECT{};
+}
+
+// 真实点击一个溢出区托盘图标：亮任务栏 → 开溢出岛 → 定位 → SendInput。
+// 全程 ~2.5s，任务栏会在屏幕底部短暂可见（这是「真点击」的必要代价）。
+static bool TrayRealClick(const std::wstring& want) {
     const HWND tray = FindWindowW(L"Shell_TrayWnd", nullptr);
     if (!tray) return false;
-    RECT r = {};
-    if (!GetWindowRect(tray, &r)) return false;
 
-    // ① 挪到屏幕外再亮 —— 任务栏内容照常成型，用户全程看不见
-    SetWindowPos(tray, nullptr, 0, GetSystemMetrics(SM_CYSCREEN) + 5,
-                 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+    // ① 亮在真实位置（记录现场，完事还原）
+    RECT r = {};
+    GetWindowRect(tray, &r);
     ShowWindow(tray, SW_SHOW);
-    if (snooze(450)) { ShowWindow(tray, SW_HIDE); return false; }
+    Sleep(400);
 
     bool done = false;
     {
         Uia uia;
         if (uia.Init()) {
             const HWND bridge = FindBridgeChild(tray);
-            IUIAutomationElement* rootEl = nullptr;
-            if (bridge &&
-                SUCCEEDED(uia.uia->ElementFromHandle(bridge, &rootEl)) && rootEl) {
-                std::vector<std::pair<std::wstring, IUIAutomationElement*>> btns;
-                CollectButtons(uia.uia, rootEl, btns);
-
-                // ②-b 前缀触发（输入法切换这类主栏按钮，不用开溢出岛）
-                if (invokePrefix) {
-                    for (auto& b : btns) {
-                        if (b.first.rfind(*invokePrefix, 0) == 0) {
-                            InvokeEl(b.second);
-                            done = true;
-                            break;
-                        }
-                    }
-                }
-
-                // ② Invoke「显示隐藏的图标」→ 溢出岛出现
-                if (!invokePrefix) for (auto& b : btns) {
-                    if (b.first == L"显示隐藏的图标") { InvokeEl(b.second); break; }
-                }
-                if (snooze(900)) {
-                    for (auto& b : btns) if (b.second) b.second->Release();
-                    rootEl->Release();
-                    SetWindowPos(tray, nullptr, r.left, r.top, 0, 0,
-                                 SWP_NOSIZE | SWP_NOZORDER);
-                    ShowWindow(tray, SW_HIDE);
-                    return false;
-                }
-
-                // ③ 溢出岛里就是那些「平常看不见」的托盘应用
-                const HWND isl = invokePrefix
-                                     ? nullptr
-                                     : FindWindowW(
-                                           L"TopLevelWindowForOverflowXamlIsland",
-                                           nullptr);
-                if (isl) {
-                    IUIAutomationElement* islEl = nullptr;
-                    if (SUCCEEDED(uia.uia->ElementFromHandle(isl, &islEl)) && islEl) {
-                        std::vector<std::pair<std::wstring, IUIAutomationElement*>> ib;
-                        CollectButtons(uia.uia, islEl, ib);
-                        if (entries) {
-                            for (auto& b : ib) {
-                                const std::wstring fl = FirstLine(b.first);
-                                if (fl.empty() || fl == L"MyDock") continue;
-                                entries->push_back({fl, ExeOfElement(b.second)});
-                            }
-                            done = !entries->empty();
-                        }
-                        if (invokeName) {
-                            bool matched = false;
-                            for (auto& b : ib) {
-                                const std::wstring fl = FirstLine(b.first);
-                                // 首行精确匹配；G-Helper 温度这类会漂的，
-                                // 退而比对首 token
-                                const bool hit =
-                                    _wcsicmp(fl.c_str(), invokeName->c_str()) == 0 ||
-                                    _wcsicmp(FirstToken(fl).c_str(),
-                                             FirstToken(*invokeName).c_str()) == 0;
-                                if (hit) {
-                                    const bool ok = InvokeEl(b.second);
-                                    Log(L"托盘触发：匹配「%ls」，Invoke=%d",
-                                        fl.substr(0, 30).c_str(),
-                                        static_cast<int>(ok));
-                                    matched = true;
+            IUIAutomationElement* bridgeEl = nullptr;
+            if (bridge && SUCCEEDED(uia.uia->ElementFromHandle(bridge, &bridgeEl))) {
+                // ② 开溢出岛
+                if (InvokeChevron(uia.uia, bridgeEl)) {
+                    Sleep(900);
+                    const HWND isl = FindWindowW(
+                        L"TopLevelWindowForOverflowXamlIsland", nullptr);
+                    if (isl) {
+                        IUIAutomationElement* islEl = nullptr;
+                        if (SUCCEEDED(uia.uia->ElementFromHandle(isl, &islEl))) {
+                            std::vector<std::pair<std::wstring, RECT>> btns;
+                            if (CollectButtons(uia.uia, islEl, btns, nullptr) > 0) {
+                                // ③ 定位目标按钮 → 真实点击
+                                const RECT rc = FindButtonRect(btns, want);
+                                if (rc.left || rc.right) {
+                                    const int cx = (rc.left + rc.right) / 2;
+                                    const int cy = (rc.top + rc.bottom) / 2;
+                                    POINT save = {};
+                                    GetCursorPos(&save);
+                                    SetCursorPos(cx, cy);
+                                    Sleep(80);
+                                    INPUT click[2] = {};
+                                    click[0].type = INPUT_MOUSE;
+                                    click[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+                                    click[1].type = INPUT_MOUSE;
+                                    click[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+                                    SendInput(2, click, sizeof(INPUT));
+                                    Sleep(150);
+                                    SetCursorPos(save.x, save.y);
                                     done = true;
-                                    break;
+                                    Log(L"托盘触发：已真实点击「%ls」(%d,%d)",
+                                        want.substr(0, 24).c_str(), cx, cy);
                                 }
                             }
-                            if (!matched) {
-                                Log(L"托盘触发：没找到「%ls」对应的按钮",
-                                    invokeName->substr(0, 30).c_str());
-                            }
+                            islEl->Release();
                         }
-                        for (auto& b : ib) if (b.second) b.second->Release();
-                        islEl->Release();
                     }
                 }
-                // ④ 再 Invoke 一次 chevron 收起溢出岛
-                if (!invokePrefix) for (auto& b : btns) {
-                    if (b.first == L"显示隐藏的图标") { InvokeEl(b.second); break; }
-                }
-                for (auto& b : btns) if (b.second) b.second->Release();
-                rootEl->Release();
+                bridgeEl->Release();
             }
         }
     }
 
-    if (snooze(250)) { ShowWindow(tray, SW_HIDE); return done; }
-    // ⑤ 还原：挪回原位 + 藏起来
+    // ④ 还原：藏回屏幕外
+    Sleep(done ? 400 : 100);
     SetWindowPos(tray, nullptr, r.left, r.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
     ShowWindow(tray, SW_HIDE);
     return done;
 }
 
-std::vector<TrayEntry> TrayCachedEntries() {
-    std::lock_guard<std::mutex> lk(g_cacheMtx);
-    return g_cache;
-}
-
-bool TrayCacheReady() {
-    std::lock_guard<std::mutex> lk(g_cacheMtx);
-    return g_cacheValid;
-}
-
-unsigned long long TrayCacheAgeMs() {
-    std::lock_guard<std::mutex> lk(g_cacheMtx);
-    if (!g_cacheValid) return ~0ull;
-    return GetTickCount64() - g_cacheAt;
-}
-
-void TrayRefreshAsync() {
-    ScheduleBackground(L"托盘枚举", [](HANDLE stop) {
-        std::vector<TrayEntry> entries;
-        if (TrayDance(&entries, nullptr, nullptr, stop)) {
-            std::lock_guard<std::mutex> lk(g_cacheMtx);
-            g_cache = std::move(entries);
-            g_cacheValid = true;
-            g_cacheAt = GetTickCount64();
-        }
-    });
-}
-
-void TrayInvokeByNameAsync(const std::wstring& firstNameLine) {
-    ScheduleBackground(L"托盘触发", [firstNameLine](HANDLE stop) {
-        TrayDance(nullptr, &firstNameLine, nullptr, stop);
+void TrayClickByNameAsync(const std::wstring& name) {
+    ScheduleBackground(L"托盘触发", [name](HANDLE stop) {
+        if (stop && WaitForSingleObject(stop, 0) == WAIT_OBJECT_0) return;
+        if (TrayRealClick(name)) return;
+        // 没点中（岛没开成/按钮不在）：日志记下，用户下次再试
+        Log(L"托盘触发：「%ls」本次未完成", name.substr(0, 24).c_str());
     });
 }
 
