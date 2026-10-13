@@ -540,6 +540,17 @@ bool LucideIcon(const char* name, SvgIcon& out) {
         return true;
     }
 
+    // ---- languages（输入法槽位用）----
+    if (!std::strcmp(name, "languages")) {
+        P("m5 8 6 6");
+        P("m4 14 6-6 2-3");
+        P("M2 5h12");
+        P("M7 2h1");
+        P("m22 22-5-10-5 10");
+        P("M14 18h6");
+        return true;
+    }
+
     // ---- Wi-Fi：四档，按真实信号强度选 ----
     if (!std::strcmp(name, "wifi")) {
         P("M12 20h.01");

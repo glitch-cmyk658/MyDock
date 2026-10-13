@@ -130,7 +130,8 @@ bool InvokeEl(IUIAutomationElement* el) {
 // 完整舞步：names 非空 → 枚举溢出区；invokeName 非空 → 按名触发。
 // stop 有信号时在各个等待点尽快撤退（先恢复任务栏原位再返回）。
 static bool TrayDance(std::vector<TrayEntry>* entries,
-                      const std::wstring* invokeName, HANDLE stop) {
+                      const std::wstring* invokeName,
+                      const std::wstring* invokePrefix, HANDLE stop) {
     auto snooze = [&](DWORD ms) {
         return stop && WaitForSingleObject(stop, ms) == WAIT_OBJECT_0;
     };
@@ -157,8 +158,19 @@ static bool TrayDance(std::vector<TrayEntry>* entries,
                 std::vector<std::pair<std::wstring, IUIAutomationElement*>> btns;
                 CollectButtons(uia.uia, rootEl, btns);
 
+                // ②-b 前缀触发（输入法切换这类主栏按钮，不用开溢出岛）
+                if (invokePrefix) {
+                    for (auto& b : btns) {
+                        if (b.first.rfind(*invokePrefix, 0) == 0) {
+                            InvokeEl(b.second);
+                            done = true;
+                            break;
+                        }
+                    }
+                }
+
                 // ② Invoke「显示隐藏的图标」→ 溢出岛出现
-                for (auto& b : btns) {
+                if (!invokePrefix) for (auto& b : btns) {
                     if (b.first == L"显示隐藏的图标") { InvokeEl(b.second); break; }
                 }
                 if (snooze(900)) {
@@ -171,8 +183,11 @@ static bool TrayDance(std::vector<TrayEntry>* entries,
                 }
 
                 // ③ 溢出岛里就是那些「平常看不见」的托盘应用
-                const HWND isl = FindWindowW(
-                    L"TopLevelWindowForOverflowXamlIsland", nullptr);
+                const HWND isl = invokePrefix
+                                     ? nullptr
+                                     : FindWindowW(
+                                           L"TopLevelWindowForOverflowXamlIsland",
+                                           nullptr);
                 if (isl) {
                     IUIAutomationElement* islEl = nullptr;
                     if (SUCCEEDED(uia.uia->ElementFromHandle(isl, &islEl)) && islEl) {
@@ -203,7 +218,7 @@ static bool TrayDance(std::vector<TrayEntry>* entries,
                     }
                 }
                 // ④ 再 Invoke 一次 chevron 收起溢出岛
-                for (auto& b : btns) {
+                if (!invokePrefix) for (auto& b : btns) {
                     if (b.first == L"显示隐藏的图标") { InvokeEl(b.second); break; }
                 }
                 for (auto& b : btns) if (b.second) b.second->Release();
@@ -238,7 +253,7 @@ unsigned long long TrayCacheAgeMs() {
 void TrayRefreshAsync() {
     ScheduleBackground(L"托盘枚举", [](HANDLE stop) {
         std::vector<TrayEntry> entries;
-        if (TrayDance(&entries, nullptr, stop)) {
+        if (TrayDance(&entries, nullptr, nullptr, stop)) {
             std::lock_guard<std::mutex> lk(g_cacheMtx);
             g_cache = std::move(entries);
             g_cacheValid = true;
@@ -249,7 +264,14 @@ void TrayRefreshAsync() {
 
 void TrayInvokeByNameAsync(const std::wstring& firstNameLine) {
     ScheduleBackground(L"托盘触发", [firstNameLine](HANDLE stop) {
-        TrayDance(nullptr, &firstNameLine, stop);
+        TrayDance(nullptr, &firstNameLine, nullptr, stop);
+    });
+}
+
+void TrayInvokeImeToggleAsync() {
+    static const std::wstring kPrefix = L"任务栏输入指示";
+    ScheduleBackground(L"输入法切换", [](HANDLE stop) {
+        TrayDance(nullptr, nullptr, &kPrefix, stop);
     });
 }
 

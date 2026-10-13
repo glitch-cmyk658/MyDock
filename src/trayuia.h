@@ -38,4 +38,8 @@ void TrayRefreshAsync();
 // 按名字触发一次真实托盘点击（后台线程重走舞步 + UIA Invoke）。重入安全。
 void TrayInvokeByNameAsync(const std::wstring& firstNameLine);
 
+// 点任务栏的「中/英文」输入指示器 = 切换中英（应用自己的行为）。
+// 只开屏外任务栏、不开溢出岛，比完整舞步快。
+void TrayInvokeImeToggleAsync();
+
 }  // namespace mydock

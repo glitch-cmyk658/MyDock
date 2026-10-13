@@ -271,6 +271,7 @@ enum IconId {
     kIcDisplay,
     kIcBattery,
     kIcVolume,
+    kIcIme,
     kIcEject,
     kIcSearch,
     kIcToggles,
@@ -335,6 +336,11 @@ void DrawStatusIcon(Gdiplus::Graphics& g, int id, float cx, float cy, float s,
         }
         case kIcDisplay:
             if (LucideIcon("monitor", ic))
+                SvgDraw(g, ic, cx, cy, s, kIconStrokeIn24, IconInk(false, dark));
+            break;
+        case kIcIme:
+            // 输入法槽位：languages 图形 + 右边的「中 / A」标签（见 Render）
+            if (LucideIcon("languages", ic))
                 SvgDraw(g, ic, cx, cy, s, kIconStrokeIn24, IconInk(false, dark));
             break;
         case kIcBattery: {
@@ -728,6 +734,17 @@ void TopBar::DrawIconRow(Gdiplus::Graphics& g, float textLeft) {
     iconLabel_[kIcBattery].clear();
     if (sys_.hasBattery && (sys_.charging || sys_.onAC)) {
         iconLabel_[kIcBattery] = std::to_wstring(sys_.pct) + L"%";
+    }
+
+    // 2026-10-12 - AI - 输入法槽：显示**前台窗口**的键盘布局语言。
+    // 中文布局（简体 0x0804 / 繁体 0x0C04…）显示「中」，其它显示「A」——
+    // 跟 macOS 的「拼 / A」一个表达法。查询很便宜（一次 GetKeyboardLayout）。
+    {
+        const HWND fg = GetForegroundWindow();
+        const DWORD tid = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
+        const HKL hkl = GetKeyboardLayout(tid);
+        const WORD lang = LOWORD(reinterpret_cast<UINT_PTR>(hkl));
+        iconLabel_[kIcIme] = (PRIMARYLANGID(lang) == LANG_CHINESE) ? L"中" : L"A";
     }
 
     // 标签用的字号小一号、用跟时钟同一档的墨色，免得喧宾夺主
@@ -1653,6 +1670,39 @@ void TopBar::Tick() {
     }
 }
 
+// 2026-10-12 - AI - 切换输入法。
+//   主路：枚举已装布局（GetKeyboardLayoutList），给前台窗口投
+//   WM_INPUTLANGCHANGEREQUEST 切到下一个 —— 这是切输入法的经典通道，
+//   对绝大多数应用有效且不弹任何 UI。
+//   只装了一个布局时 HKL 没得切：改点任务栏的「中/英文」输入指示器
+//   （UIA Invoke），那是搜狗这类 IME 自己的切换行为。
+void TopBar::SwitchIme() {
+    const HWND fg = GetForegroundWindow();
+    if (!fg) return;
+    const DWORD tid = GetWindowThreadProcessId(fg, nullptr);
+    const HKL cur = GetKeyboardLayout(tid);
+
+    UINT n = GetKeyboardLayoutList(0, nullptr);
+    if (n >= 2) {
+        std::vector<HKL> list(n);
+        n = GetKeyboardLayoutList(n, list.data());
+        int idx = -1;
+        for (UINT i = 0; i < n; ++i) {
+            if (list[i] == cur) { idx = static_cast<int>(i); break; }
+        }
+        const HKL next = list[(idx + 1) % n];
+        // 投给前台窗口：这是系统自带的「给这个窗口换输入法」通道
+        PostMessageW(fg, WM_INPUTLANGCHANGEREQUEST, 0,
+                     reinterpret_cast<LPARAM>(next));
+        Log(L"输入法：前台窗口切换布局 → 0x%08lx",
+            static_cast<unsigned long>(reinterpret_cast<UINT_PTR>(next)));
+        return;
+    }
+
+    Log(L"输入法：只装了一个布局，改点任务栏输入指示器切中英");
+    TrayInvokeImeToggleAsync();
+}
+
 void TopBar::ShowSystemMenu() {
     // 标题行写计算机名 —— 一眼知道自己在操作哪台机器
     wchar_t pcName[64] = L"这台电脑";
@@ -1856,6 +1906,11 @@ LRESULT TopBar::OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             const int ic = HitIcon(mx, my);
+            // 2026-10-12 - AI - 输入法槽：单击直接切换，不弹菜单。
+            //   装了多个输入法 → 经典通道给前台窗口投
+            //   WM_INPUTLANGCHANGEREQUEST 切到下一个；
+            //   只装了一个 → 借 UIA 点任务栏的「中/英文」指示器切中英。
+            if (ic == kIcIme) { SwitchIme(); return 0; }
             if (ic >= 0) ShowIconMenu(ic);
             // 2026-10-11 - AI - 点时钟弹日历。以前这块点了没反应 ——
             //   任务栏的时钟 flyout 是 ShellExperienceHost 的内部窗口，

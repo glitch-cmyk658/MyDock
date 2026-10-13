@@ -62,6 +62,8 @@ private:
     void ShowIconMenu(int id);
     void RunIconMenuCommand(int id, int cmd);
     void ShowSystemMenu();
+    // 2026-10-12 - AI - 切换输入法（顶栏输入法槽位的单击动作）
+    void SwitchIme();
     void RunCommand(int cmd);
     void SendWinKey(WORD vk);       // 给系统发一次 Win+X 热键
     bool ForegroundFullscreen() const;
