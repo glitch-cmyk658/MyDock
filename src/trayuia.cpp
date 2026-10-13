@@ -268,11 +268,4 @@ void TrayInvokeByNameAsync(const std::wstring& firstNameLine) {
     });
 }
 
-void TrayInvokeImeToggleAsync() {
-    static const std::wstring kPrefix = L"任务栏输入指示";
-    ScheduleBackground(L"输入法切换", [](HANDLE stop) {
-        TrayDance(nullptr, nullptr, &kPrefix, stop);
-    });
-}
-
 }  // namespace mydock

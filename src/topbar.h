@@ -62,8 +62,18 @@ private:
     void ShowIconMenu(int id);
     void RunIconMenuCommand(int id, int cmd);
     void ShowSystemMenu();
-    // 2026-10-12 - AI - 切换输入法（顶栏输入法槽位的单击动作）
-    void SwitchIme();
+    // 2026-10-12 - AI - 输入法槽位：弹出全部输入法的菜单供挑选
+    void ShowImeMenu();
+
+    // 输入法菜单的一项（TSF profile）
+    struct ImeItem {
+        DWORD  type = 0;          // TF_PROFILETYPE_*
+        LANGID langid = 0;
+        CLSID  clsid{};
+        GUID   guidProfile{};
+        HKL    hkl = nullptr;     // 键盘布局类型才有
+    };
+    std::vector<ImeItem> imeItems_;
     void RunCommand(int cmd);
     void SendWinKey(WORD vk);       // 给系统发一次 Win+X 热键
     bool ForegroundFullscreen() const;

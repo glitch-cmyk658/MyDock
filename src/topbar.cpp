@@ -5,6 +5,7 @@
 #include "util.h"
 #include "theme.h"
 #include "trayuia.h"
+#include <msctf.h>
 
 #include <algorithm>
 #include <cmath>
@@ -54,6 +55,11 @@ const int kStAutoStart = 155;  // 开机自启开关（勾选态）
 const int kStRestartDock = 156; // 重启 MyDock
 const int kStDiskMgmt = 157;   // 磁盘管理
 const int kStTrayBase = 400;   // 托盘应用菜单项（基址 + 序号）
+const int kImeBase    = 500;   // 输入法菜单项（基址 + 序号）
+// TSF 的 ActivateProfile 用 flag（MinGW 头里没定义这个常量）
+#ifndef TF_IPP_FLAG_DONTCARECURRENTINPUTLANGUAGE
+#define TF_IPP_FLAG_DONTCARECURRENTINPUTLANGUAGE 0x00000001
+#endif
 const int kStWifiBase = 200;   // 200..249
 const int kStBtBase   = 300;   // 300..349
 
@@ -974,6 +980,100 @@ void TopBar::ShowIconMenu(int id) {
             line(kStProject,  L"投影（Win+P）");
             break;
 
+        case kIcIme: {
+            // 2026-10-13 - AI - 输入法菜单：列出系统**全部**输入法配置
+            //（键盘布局 + 搜狗/微软拼音这类输入处理器），勾选当前生效的。
+            // 数据源 TSF（ITfInputProcessorProfileMgr::EnumProfiles）——
+            // 只有它能给出 TIP 的友好名和可激活的 clsid/guidProfile；
+            // HKL 和注册表在这台机器上只有一条「中文-美式键盘」，看不出 IME。
+            head(L"输入法", L"");
+            sep();
+            imeItems_.clear();
+
+            ITfInputProcessorProfiles* ip = nullptr;
+            ITfInputProcessorProfileMgr* mgr = nullptr;
+            if (SUCCEEDED(CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr,
+                                           CLSCTX_INPROC_SERVER,
+                                           IID_ITfInputProcessorProfiles,
+                                           reinterpret_cast<void**>(&ip))) && ip) {
+                ip->QueryInterface(IID_ITfInputProcessorProfileMgr,
+                                   reinterpret_cast<void**>(&mgr));
+            }
+            if (!mgr) {
+                if (ip) ip->Release();
+                line(0, L"（枚举输入法失败）");
+                break;
+            }
+
+            // 当前生效参照：TIP 用 GetActiveProfile，键盘布局用前台 HKL
+            const HWND fg = GetForegroundWindow();
+            const DWORD fgtid = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
+            const HKL fgHkl = GetKeyboardLayout(fgtid);
+            TF_INPUTPROCESSORPROFILE act{};
+            const BOOL haveAct =
+                SUCCEEDED(mgr->GetActiveProfile(GUID_TFCAT_TIP_KEYBOARD, &act));
+
+            IEnumTfInputProcessorProfiles* en = nullptr;
+            if (SUCCEEDED(mgr->EnumProfiles(0, &en)) && en) {   // 0 = 全部语言
+                TF_INPUTPROCESSORPROFILE p{};
+                ULONG fetched = 0;
+                while (en->Next(1, &p, &fetched) == S_OK && fetched == 1) {
+                    const int idx = static_cast<int>(imeItems_.size());
+
+                    std::wstring desc;
+                    bool active = false;
+                    if (p.dwProfileType == TF_PROFILETYPE_INPUTPROCESSOR) {
+                        BSTR b = nullptr;
+                        if (SUCCEEDED(ip->GetLanguageProfileDescription(
+                                p.clsid, p.langid, p.guidProfile, &b)) && b) {
+                            desc = b;
+                            SysFreeString(b);
+                        }
+                        active = haveAct &&
+                                 IsEqualCLSID(act.clsid, p.clsid) &&
+                                 IsEqualGUID(act.guidProfile, p.guidProfile);
+                    } else {
+                        // 键盘布局：注册表 Layout Text（键名 = 8 位布局 id）
+                        wchar_t id[16] = {};
+                        swprintf_s(id, L"%08X", static_cast<DWORD>(p.langid));
+                        wchar_t txt[128] = L"";
+                        DWORD sz = sizeof(txt);
+                        HKEY k = nullptr;
+                        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+                                L"SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts",
+                                0, KEY_READ, &k) == ERROR_SUCCESS) {
+                            HKEY sk = nullptr;
+                            if (RegOpenKeyExW(k, id, 0, KEY_READ, &sk) == ERROR_SUCCESS) {
+                                RegGetValueW(sk, nullptr, L"Layout Text",
+                                             RRF_RT_REG_SZ, nullptr, txt, &sz);
+                                RegCloseKey(sk);
+                            }
+                            RegCloseKey(k);
+                        }
+                        desc = txt[0] ? txt
+                                      : (L"键盘布局 " + std::wstring(id));
+                        active = (LOWORD(reinterpret_cast<UINT_PTR>(p.hkl)) ==
+                                  LOWORD(reinterpret_cast<UINT_PTR>(fgHkl)));
+                    }
+                    if (desc.empty()) continue;
+
+                    ImeItem item;
+                    item.type = p.dwProfileType;
+                    item.langid = p.langid;
+                    item.clsid = p.clsid;
+                    item.guidProfile = p.guidProfile;
+                    item.hkl = p.hkl;
+                    imeItems_.push_back(item);
+                    line(kImeBase + idx, desc, active);
+                }
+                en->Release();
+            }
+            mgr->Release();
+            ip->Release();
+            if (imeItems_.empty()) line(0, L"（没有找到输入法）");
+            break;
+        }
+
         case kIcEject: {
             // 2026-10-12 - AI - 正式成为「托盘」：列出 Windows 托盘里在跑的
             // 应用（输入法、GHelper 这类平常看不见的）。数据源是注册表
@@ -1073,6 +1173,40 @@ void TopBar::RunIconMenuCommand(int id, int cmd) {
                 static_cast<int>(reinterpret_cast<INT_PTR>(r)));
         }
     };
+
+    // ---- 点了某个输入法 ----
+    if (cmd >= kImeBase) {
+        const size_t i = static_cast<size_t>(cmd - kImeBase);
+        if (i >= imeItems_.size()) return;
+        const ImeItem& it = imeItems_[i];
+
+        if (it.type == TF_PROFILETYPE_INPUTPROCESSOR) {
+            // 输入处理器（搜狗/微软拼音）：TSF 激活它的 profile。
+            // DONTCARECURRENTINPUTLANGUAGE：目标语言和当前输入语言不同也照切。
+            ITfInputProcessorProfileMgr* mgr = nullptr;
+            if (SUCCEEDED(CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr,
+                                           CLSCTX_INPROC_SERVER,
+                                           IID_ITfInputProcessorProfileMgr,
+                                           reinterpret_cast<void**>(&mgr))) && mgr) {
+                const HRESULT hr = mgr->ActivateProfile(
+                    TF_PROFILETYPE_INPUTPROCESSOR, it.langid, it.clsid,
+                    it.guidProfile, nullptr,
+                    TF_IPP_FLAG_DONTCARECURRENTINPUTLANGUAGE);
+                Log(L"输入法：ActivateProfile → 0x%08lX",
+                    static_cast<unsigned long>(hr));
+                mgr->Release();
+            }
+            return;
+        }
+
+        // 键盘布局：经典通道投给前台窗口
+        if (it.hkl) {
+            const HWND fg = GetForegroundWindow();
+            if (fg) PostMessageW(fg, WM_INPUTLANGCHANGEREQUEST, 0,
+                                 reinterpret_cast<LPARAM>(it.hkl));
+        }
+        return;
+    }
 
     // ---- 点了某个托盘应用 ----
     // 后台重走舞步（亮屏外任务栏 → 开溢出区 → 按名 Invoke）——
@@ -1670,39 +1804,6 @@ void TopBar::Tick() {
     }
 }
 
-// 2026-10-12 - AI - 切换输入法。
-//   主路：枚举已装布局（GetKeyboardLayoutList），给前台窗口投
-//   WM_INPUTLANGCHANGEREQUEST 切到下一个 —— 这是切输入法的经典通道，
-//   对绝大多数应用有效且不弹任何 UI。
-//   只装了一个布局时 HKL 没得切：改点任务栏的「中/英文」输入指示器
-//   （UIA Invoke），那是搜狗这类 IME 自己的切换行为。
-void TopBar::SwitchIme() {
-    const HWND fg = GetForegroundWindow();
-    if (!fg) return;
-    const DWORD tid = GetWindowThreadProcessId(fg, nullptr);
-    const HKL cur = GetKeyboardLayout(tid);
-
-    UINT n = GetKeyboardLayoutList(0, nullptr);
-    if (n >= 2) {
-        std::vector<HKL> list(n);
-        n = GetKeyboardLayoutList(n, list.data());
-        int idx = -1;
-        for (UINT i = 0; i < n; ++i) {
-            if (list[i] == cur) { idx = static_cast<int>(i); break; }
-        }
-        const HKL next = list[(idx + 1) % n];
-        // 投给前台窗口：这是系统自带的「给这个窗口换输入法」通道
-        PostMessageW(fg, WM_INPUTLANGCHANGEREQUEST, 0,
-                     reinterpret_cast<LPARAM>(next));
-        Log(L"输入法：前台窗口切换布局 → 0x%08lx",
-            static_cast<unsigned long>(reinterpret_cast<UINT_PTR>(next)));
-        return;
-    }
-
-    Log(L"输入法：只装了一个布局，改点任务栏输入指示器切中英");
-    TrayInvokeImeToggleAsync();
-}
-
 void TopBar::ShowSystemMenu() {
     // 标题行写计算机名 —— 一眼知道自己在操作哪台机器
     wchar_t pcName[64] = L"这台电脑";
@@ -1910,7 +2011,6 @@ LRESULT TopBar::OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
             //   装了多个输入法 → 经典通道给前台窗口投
             //   WM_INPUTLANGCHANGEREQUEST 切到下一个；
             //   只装了一个 → 借 UIA 点任务栏的「中/英文」指示器切中英。
-            if (ic == kIcIme) { SwitchIme(); return 0; }
             if (ic >= 0) ShowIconMenu(ic);
             // 2026-10-11 - AI - 点时钟弹日历。以前这块点了没反应 ——
             //   任务栏的时钟 flyout 是 ShellExperienceHost 的内部窗口，
