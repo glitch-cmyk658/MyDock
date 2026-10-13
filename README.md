@@ -145,5 +145,5 @@ MinGW 头文件差异、托盘 zombie 图标……）整理在 [DEVLOG.md](DEVLO
 
 ## 许可证
 
-代码本身未附加开源许可证（保留所有权利）。图标矢量数据来自
-[Lucide](https://lucide.dev)（ISC License）。
+[MIT](LICENSE) —— 随意使用、修改、分发，唯一要求是保留版权声明。
+图标矢量数据来自 [Lucide](https://lucide.dev)（ISC License）。
