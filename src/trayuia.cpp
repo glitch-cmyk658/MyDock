@@ -202,6 +202,7 @@ static bool TrayDance(std::vector<TrayEntry>* entries,
                             done = !entries->empty();
                         }
                         if (invokeName) {
+                            bool matched = false;
                             for (auto& b : ib) {
                                 const std::wstring fl = FirstLine(b.first);
                                 // 首行精确匹配；G-Helper 温度这类会漂的，
@@ -210,7 +211,19 @@ static bool TrayDance(std::vector<TrayEntry>* entries,
                                     _wcsicmp(fl.c_str(), invokeName->c_str()) == 0 ||
                                     _wcsicmp(FirstToken(fl).c_str(),
                                              FirstToken(*invokeName).c_str()) == 0;
-                                if (hit) { InvokeEl(b.second); done = true; break; }
+                                if (hit) {
+                                    const bool ok = InvokeEl(b.second);
+                                    Log(L"托盘触发：匹配「%ls」，Invoke=%d",
+                                        fl.substr(0, 30).c_str(),
+                                        static_cast<int>(ok));
+                                    matched = true;
+                                    done = true;
+                                    break;
+                                }
+                            }
+                            if (!matched) {
+                                Log(L"托盘触发：没找到「%ls」对应的按钮",
+                                    invokeName->substr(0, 30).c_str());
                             }
                         }
                         for (auto& b : ib) if (b.second) b.second->Release();
