@@ -114,6 +114,7 @@ void Dock::ShowMenu(int x, int y) {
     line(items, 2, L"刷新应用列表");
     sep(items);
     line(items, 11, L"悬停高亮", glow_ > 0.0f);
+    line(items, 13, L"贴边自动升起", riseEnabled_);
     sep(items);
     // 用户从启动台里「移出」的应用，靠启动台左上角那个「+」重新挑一个回来，
     // 不再给「一键全部恢复」—— 那样会把以前故意移出去的也一起放回来。
@@ -180,6 +181,10 @@ void Dock::ShowMenu(int x, int y) {
         ApplyGlow(glow_ > 0.0f ? 0.0f : 1.0f);
         SaveSettings();
         Log(L"悬停高亮：%ls", glow_ > 0.0f ? L"开" : L"关");
+    } else if (cmd == 13) {
+        riseEnabled_ = !riseEnabled_;
+        SaveSettings();
+        Log(L"贴边自动升起：%ls", riseEnabled_ ? L"开" : L"关");
     }
 }
 

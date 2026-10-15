@@ -954,8 +954,11 @@ void Dock::LoadSettings() {
 void Dock::UpdateRiseRules() {
     const std::wstring ini = ConfigDir() + L"\\settings.ini";
     edgePx_ = GetPrivateProfileIntW(L"dock", L"edge", 3, ini.c_str());
+    riseEnabled_ = GetPrivateProfileIntW(L"dock", L"rise", 1, ini.c_str()) != 0;
     hideDistPx_ = GetPrivateProfileIntW(L"dock", L"hidedist", 40, ini.c_str());
-    if (edgePx_ < 0) edgePx_ = 0;
+    // ★ 触发带刻意压到 3px：底部有按钮的应用一大堆，触发带一宽
+    //   （哪怕 12px）鼠标一靠近就升起、直接挡住那些按钮。
+    //   「怼到最边上」是刻意的交互成本 —— 换来应用底部区域的绝对安全。
     if (edgePx_ > 40) edgePx_ = 40;
     if (hideDistPx_ < 4) hideDistPx_ = 4;
     if (hideDistPx_ > 300) hideDistPx_ = 300;
@@ -968,6 +971,8 @@ void Dock::SaveSettings() {
     wchar_t buf[16] = {};
     swprintf(buf, 16, L"%d", static_cast<int>(glow_ * 100.0f + 0.5f));
     WritePrivateProfileStringW(L"look", L"glow", buf, ini.c_str());
+    WritePrivateProfileStringW(L"dock", L"rise", riseEnabled_ ? L"1" : L"0",
+                               ini.c_str());
 }
 
 void Dock::RequestRender() {

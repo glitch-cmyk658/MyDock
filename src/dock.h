@@ -157,6 +157,7 @@ private:
     DWORD fullscreenCheckDue_ = 0;   // 上次检查「有没有全屏应用」的时刻
     bool  fullscreenNow_ = false;
     DWORD graceUntil_ = 0;           // 启动后的保护期，在这之前不自动收起
+    bool  riseEnabled_ = true;       // 贴边自动升起开关（右键菜单可关）
 
     int labelH_ = 0;
     int baseSize_ = 0;
