@@ -354,10 +354,20 @@ LRESULT Dock::OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             if (atEdge || overDock) {
-                lastInside_ = now;
+                lastInside_ = now;             // 在边上/在 Dock 上：不算走开
+            }
+
+            // ★ 2026-10-13 - AI - 用户定版：Dock **只在鼠标真的到达屏幕最
+            //   底边**时弹起（atEdge，3px 触发带），立即升起、无停留计时。
+            //   overDock（鼠标在 Dock 身上/其常驻矩形内）只负责「别收」，
+            //   绝不触发升起 —— 它覆盖底边上方 ~70px，正是挡按钮的那一条。
+            //   riseEnabled_（右键菜单「贴边自动升起」）关掉后贴边不冒头。
+            if (!wantVisible_ && riseEnabled_ && atEdge) {
                 SetVisible(true);
-            } else if (wantVisible_ && now >= graceUntil_ &&
-                       away >= static_cast<double>(DockDpi(hideDistPx_))) {
+            }
+
+            if (wantVisible_ && now >= graceUntil_ &&
+                away >= static_cast<double>(DockDpi(hideDistPx_))) {
                 // ★ 只有「真的走开了」才收。停在 Dock 边上（阈值以内）不算走开 ——
                 //   这一条是「距离判据」相对「时间判据」最实在的好处。
                 SetVisible(false);

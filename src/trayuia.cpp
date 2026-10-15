@@ -139,16 +139,30 @@ struct Uia {
     }
 };
 
+std::wstring Trim(const std::wstring& s) {
+    size_t a = s.find_first_not_of(L" \t\r\n");
+    if (a == std::wstring::npos) return L"";
+    size_t b = s.find_last_not_of(L" \t\r\n");
+    return s.substr(a, b - a + 1);
+}
+
 std::wstring FirstLine(const std::wstring& s) {
-    const size_t p = s.find(L'\n');
-    std::wstring r = (p == std::wstring::npos) ? s : s.substr(0, p);
-    while (!r.empty() && (r.back() == L'\r' || r.back() == L' ')) r.pop_back();
-    return r;
+    return Trim(s.substr(0, s.find(L'\n')));
 }
 
 std::wstring FirstToken(const std::wstring& s) {
-    const size_t p = s.find_first_of(L" \t\n");
-    return (p == std::wstring::npos) ? s : s.substr(0, p);
+    return Trim(s.substr(0, s.find_first_of(L" \t\n")));
+}
+
+// 匹配键：小写 + 去掉全部空格/连字符 —— 「clash-verge」「Clash Verge 2.2.0」
+// 「 WorkBuddy」这些写法差异全部归一（2026-10-13 日志里两种失败各占一份）
+std::wstring MatchKey(const std::wstring& s) {
+    std::wstring r;
+    for (wchar_t c : Trim(s)) {
+        if (c == L' ' || c == L'\t' || c == L'-') continue;
+        r.push_back(static_cast<wchar_t>(towlower(c)));
+    }
+    return r;
 }
 
 // 收一棵元素树里的按钮：{第一行名, 矩形, 元素引用转交调用方}
@@ -195,13 +209,15 @@ size_t CollectButtons(IUIAutomation* uia, IUIAutomationElement* root,
     return cnt;
 }
 
-// 名字匹配：首行精确 / 首 token / tooltip 前缀（G-Helper 温度会漂）
+// 名字匹配：归一化键（去空格/连字符/大小写）相等或前缀。
+// 前缀是给 G-Helper 这类动态 tooltip 的：键「ghelpercpu:49°c...」会漂，
+// 但菜单名和按钮名的前缀总是一致的。
 bool NameMatch(const std::wstring& buttonName, const std::wstring& want) {
-    const std::wstring fl = FirstLine(buttonName);
-    if (_wcsicmp(fl.c_str(), want.c_str()) == 0) return true;
-    if (_wcsicmp(FirstToken(fl).c_str(), FirstToken(want).c_str()) == 0)
-        return true;
-    return _wcsnicmp(fl.c_str(), want.c_str(), want.size()) == 0;
+    const std::wstring a = MatchKey(FirstLine(buttonName));
+    const std::wstring b = MatchKey(want);
+    if (a.empty() || b.empty()) return false;
+    return a.compare(b) == 0 || a.compare(0, b.size(), b) == 0
+        || b.compare(0, a.size(), a) == 0;
 }
 
 // 把 UIA 按钮名剥掉任务栏按钮的修饰尾巴 ——「已固定」「- N 个运行窗口」
@@ -301,6 +317,17 @@ RECT FindButtonRect(const std::vector<std::pair<std::wstring, RECT>>& btns,
     return RECT{};
 }
 
+// 把溢出岛收掉：官方开关是再 Invoke 一次 chevron；万一还在，直接藏。
+// ★ 不收的后果（2026-10-13 视频实测）：溢出岛一直飘在 Dock 上方挡住它，
+//   用户看到的就是「任务栏/弹层莫名其妙冒出来」。
+void CloseIsland(HWND tray, IUIAutomation* uia,
+                 IUIAutomationElement* bridgeEl) {
+    InvokeChevron(uia, bridgeEl);           // 开/关是同一个 chevron 的 toggle
+    Sleep(250);
+    const HWND isl = FindWindowW(L"TopLevelWindowForOverflowXamlIsland", nullptr);
+    if (isl && IsWindowVisible(isl)) ShowWindow(isl, SW_HIDE);
+}
+
 // 真实点击一个溢出区托盘图标：亮任务栏 → 开溢出岛 → 定位 → SendInput。
 // 全程 ~2.5s，任务栏会在屏幕底部短暂可见（这是「真点击」的必要代价）。
 static bool TrayRealClick(const std::wstring& want) {
@@ -350,12 +377,17 @@ static bool TrayRealClick(const std::wstring& want) {
                                     done = true;
                                     Log(L"托盘触发：已真实点击「%ls」(%d,%d)",
                                         want.substr(0, 24).c_str(), cx, cy);
+                                } else {
+                                    Log(L"托盘触发：溢出岛里没有匹配「%ls」的按钮",
+                                        want.substr(0, 24).c_str());
                                 }
                             }
                             islEl->Release();
                         }
                     }
                 }
+                // ⑤ 点完把溢出岛收掉 —— 不然它一直飘在 Dock 上方挡视线
+                CloseIsland(tray, uia.uia, bridgeEl);
                 bridgeEl->Release();
             }
         }
